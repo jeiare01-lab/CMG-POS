@@ -710,7 +710,7 @@ function viewAts(){
   const edit=has('hr','chro');let h=head('ats');
   h+=`<div class="row" style="margin-bottom:10px">${db.reqs.map(r=>`<button class="btn sm ${ui.reqSel===r.id?'primary':''}" data-act="reqsel" data-id="${r.id}">${esc(r.id)} · ${esc(r.title)} (${r.filled}/${r.headcount})</button>`).join('')}</div>`;
   const rq=db.reqs.find(r=>r.id===ui.reqSel)||db.reqs[0];
-  const rform=edit?`<div class="card" style="margin-top:12px"><h3>Open a requisition</h3><div class="form"><label class="f">Position<input id="rq-t"></label><label class="f">Company<select id="rq-co">${opts(COS)}</select></label><label class="f">Department<input id="rq-d" style="width:130px"></label><label class="f">Grade<select id="rq-g">${opts(Object.keys(BANDS),'G4')}</select></label><label class="f">Hiring manager<select id="rq-o">${opts(db.emps.filter(e=>e.active!==false).map(e=>[e.id,e.name]))}</select></label><label class="f">Headcount<input id="rq-h" type="number" min="1" value="1" style="width:80px"></label><button class="btn primary" data-act="reqadd">Open</button></div><p class="small muted">Hiring is gated by the approved headcount in Budget. Set that first or the hire will be refused.</p></div>`:'';
+  const rform=edit?`<div class="card" style="margin-top:12px"><h3>Open a requisition</h3><div class="form"><label class="f">Position<input id="rq-t"></label><label class="f">Company<select id="rq-co">${opts(COS)}</select></label><label class="f">Department (BU)<input id="rq-d" style="width:130px"></label><label class="f">Section (FG)<input id="rq-s" style="width:130px"></label><label class="f">Grade<select id="rq-g">${opts(Object.keys(BANDS),'G4')}</select></label><label class="f">Hiring manager<select id="rq-o">${opts(db.emps.filter(e=>e.active!==false).map(e=>[e.id,e.name]))}</select></label><label class="f">Headcount<input id="rq-h" type="number" min="1" value="1" style="width:80px"></label><button class="btn primary" data-act="reqadd">Open</button></div><p class="small muted">Hiring is gated by the approved headcount in Budget. Set that first or the hire will be refused.</p></div>`:'';
   if(!rq)return h+`<div class="card"><p class="muted" style="margin:0">No open requisitions yet.</p></div>`+rform;
   h+=`<div class="kan">${STAGES.map(s=>`<div class="col"><h3>${s} · ${db.apps.filter(a=>a.req===rq.id&&a.stage===s).length}</h3>${db.apps.filter(a=>a.req===rq.id&&a.stage===s).map(a=>`<div class="cand"><b>${esc(a.name)}</b><div class="small muted">${esc(a.src)} · asks ${esc(peso(a.exp))}</div>
     <div class="row" style="margin:6px 0"><span class="small muted">GWC</span><div class="gwc">${['g','w','c'].map(k=>`<button class="${a[k]?'on':''}" data-act="gwc" data-id="${a.id}" data-k="${k}" ${edit?'':'disabled'} aria-label="${k.toUpperCase()} ${a[k]?'yes':'no'}">${k.toUpperCase()}</button>`).join('')}</div></div>
@@ -978,6 +978,15 @@ function bcalc(){
   });
   return X;
 }
+const secKey=(co,d,sc)=>co+'|'+(d||'General')+'|'+(sc||'');
+function secRows(){
+  const P=(db.bud.hcs=db.bud.hcs||{}),M={};
+  const get=k=>M[k]||(M[k]={k,act:0,open:0,cost:0});
+  db.emps.filter(e=>e.active!==false&&COS.includes(e.sbu)).forEach(e=>{const r=get(secKey(e.sbu,e.dept,e.sec));r.act++;const c=calc(e);r.cost+=e.salary+c.erSSS+c.erPH+c.erPI+e.salary/12});
+  db.reqs.forEach(q=>{if(COS.includes(q.sbu)&&q.headcount-q.filled>0)get(secKey(q.sbu,q.dept,q.sec)).open+=q.headcount-q.filled});
+  Object.keys(P).forEach(k=>get(k));
+  return Object.values(M).map(r=>{const [co,d,sc]=r.k.split('|');return{...r,co,d,sc,plan:P[r.k]}}).sort((a,b)=>COS.indexOf(a.co)-COS.indexOf(b.co)||a.d.localeCompare(b.d)||a.sc.localeCompare(b.sc));
+}
 const bpill=(fc,bud)=>bud<=0?pill('No budget'):fc<=bud?pill('Within','good'):fc<=bud*1.05?pill('Over by '+money(fc-bud),'warn'):pill('Over by '+money(fc-bud),'bad');
 ui.bco='ALL';
 function viewBud(){
@@ -992,6 +1001,8 @@ function viewBud(){
    <p class="small muted">Forecast = actual to date + remaining months × run-rate. Wages, contributions and 13th month use the current payroll base. Overtime, benefits and HR programs use their own average. Merit shows approved increases for the rest of the year.</p></div>`;
   h+=`<div class="card"><h3>Headcount plan</h3>${table([['Company'],['Approved plan','r'],['Active','r'],['Open requisitions','r'],['Status']],COS.map(co=>{const x=X[co].hc,gap=x.act+x.open-x.plan;return `<tr><td><b>${co}</b></td><td class="r"><input type="number" min="0" value="${x.plan}" data-ch="hcplan" data-co="${co}" ${edit?'':'disabled'} aria-label="Plan for ${co}"></td><td class="r">${x.act}</td><td class="r">${x.open}</td><td>${gap>0?pill('Requisitions exceed plan by '+gap,'bad'):pill('Inside plan','good')}</td></tr>`}))}
    <p class="small muted">Hiring checks this plan. A hire that would pass the approved headcount is blocked unless the CHRO approves it.</p></div>`;
+  {const SR=secRows().filter(r=>sel==='ALL'||r.co===sel),tc=SR.reduce((a,r)=>a+r.cost,0);
+   h+=`<div class="card"><h3>Headcount and people cost by section</h3><p class="small muted" style="margin-top:0">BA › BU › FG. People cost is monthly: basic pay, employer contributions and the 13th-month accrual. A section with a plan blocks hires past it unless the CHRO approves. Leave the plan empty for no section cap.</p>${SR.length?table([['BA › BU › FG'],['Plan','r'],['Active','r'],['Open','r'],['Monthly people cost','r'],['Status']],SR.map(r=>{const over=r.plan!=null&&r.act+r.open>r.plan;return `<tr><td class="wrap"><b>${r.co}</b> › ${esc(r.d)} › ${r.sc?esc(r.sc):'<span class="muted">no section</span>'}</td><td class="r"><input type="number" min="0" style="width:70px" value="${r.plan==null?'':r.plan}" data-ch="hcsec" data-k="${esc(r.k)}" ${edit?'':'disabled'} aria-label="Plan for ${esc(r.k)}"></td><td class="r">${r.act}</td><td class="r">${r.open}</td><td class="r mono">${esc(money(r.cost))}</td><td>${r.plan==null?pill('No plan'):over?pill('Over by '+(r.act+r.open-r.plan),'bad'):pill('Within','good')}</td></tr>`}).concat([`<tr><td><b>Total</b></td><td></td><td class="r">${SR.reduce((a,r)=>a+r.act,0)}</td><td class="r">${SR.reduce((a,r)=>a+r.open,0)}</td><td class="r mono"><b>${esc(money(tc))}</b></td><td></td></tr>`])):'<p class="muted small">Load employees first. Sections appear as you import them.</p>'}</div>`}
   if(edit)h+=`<div class="card"><h3>Set annual budget (FY${B.fy})</h3>${table([['Line'],...COS.map(c=>[c,'r'])],LINES.map(l=>`<tr><td>${l.n}</td>${COS.map(co=>`<td class="r"><input type="number" min="0" step="1000" style="width:110px" value="${B.plan[co][l.k]}" data-ch="bud" data-co="${co}" data-l="${l.k}" aria-label="${l.n} ${co}"></td>`).join('')}</tr>`))}</div>`;
   if(has('hr','chro','payroll')){
     const rec=B.manual.filter(m=>!m.base).slice(-8).reverse();
@@ -1414,7 +1425,7 @@ const A={
  ostock:()=>{if(!has('wh','proc','hr','chro'))return;const w=$('#os-wh').value,k=$('#os-sku').value,q=+$('#os-q').value;if(!k||!(q>=0)){toast('Pick an item and enter a quantity');return}
   S().stock[w]=S().stock[w]||{};S().stock[w][k]=q;log('Supply Chain','Opening stock '+k+' = '+q+' at '+w);save();render()},
  reqadd:()=>{if(!has('hr','chro'))return;const t=$('#rq-t').value.trim(),hc=+$('#rq-h').value;if(!t||!(hc>0)){toast('Position and headcount are needed');return}
-  const id='R-'+(100+Math.max(0,...db.reqs.map(r=>+r.id.split('-')[1]-100))+1);db.reqs.push({id,title:t,sbu:$('#rq-co').value,dept:$('#rq-d').value.trim()||'General',grade:$('#rq-g').value,owner:$('#rq-o').value,headcount:hc,filled:0});ui.reqSel=id;log('Hiring','Requisition '+id+' opened: '+t);save();render()},
+  const id='R-'+(100+Math.max(0,...db.reqs.map(r=>+r.id.split('-')[1]-100))+1);db.reqs.push({id,title:t,sbu:$('#rq-co').value,dept:$('#rq-d').value.trim()||'General',sec:($('#rq-s')?$('#rq-s').value.trim():''),grade:$('#rq-g').value,owner:$('#rq-o').value,headcount:hc,filled:0});ui.reqSel=id;log('Hiring','Requisition '+id+' opened: '+t);save();render()},
  stab:d=>{ui.st=d.id;render()},
  wsel:d=>{ui.wsel=d.id;render()},
  prnew:()=>{const sku=$('#pn-sku').value,qty=+$('#pn-qty').value;if(!(qty>0)){toast('Enter a quantity');return}
@@ -1507,8 +1518,10 @@ const A={
   if(!(a.g&&a.w&&a.c)){toast('Blocked: GWC not cleared');return}
   const hcp=db.bud.hc[r.sbu],hca=db.emps.filter(e=>e.active!==false&&e.sbu===r.sbu).length;
   if(hcp!=null&&hca+1>hcp){if(!has('chro')){toast('Blocked: '+r.sbu+' is at its approved headcount of '+hcp+'. CHRO approval needed.');return}log('Budget','CHRO approved hire above plan: '+a.name+' for '+r.sbu)}
+  {const k=secKey(r.sbu,r.dept,r.sec),sp=(db.bud.hcs||{})[k],sa=db.emps.filter(e=>e.active!==false&&secKey(e.sbu,e.dept,e.sec)===k).length;
+   if(sp!=null&&sa+1>sp){if(!has('chro')){toast('Blocked: section '+r.dept+(r.sec?' › '+r.sec:'')+' is at its plan of '+sp+'. CHRO approval needed.');return}log('Budget','CHRO approved hire above section plan: '+a.name+' for '+r.sbu+' › '+r.dept+(r.sec?' › '+r.sec:''))}}
   const id='e'+(Math.max(...db.emps.map(e=>+e.id.slice(1)))+1);
-  db.emps.push({id,name:a.name,sbu:r.sbu,dept:r.dept,title:r.title,grade:r.grade,salary:a.exp,mgr:r.owner,lat:1,hired:todayS(),active:true,flags:[]});
+  db.emps.push({id,name:a.name,sbu:r.sbu,dept:r.dept,sec:r.sec||'',title:r.title,grade:r.grade,salary:a.exp,mgr:r.owner,lat:1,hired:todayS(),active:true,flags:[]});
   db.att[id]={absent:0,unpaid:0,late:0,ot:0,nd:0};db.appr[id]={kpi:3,values:3,status:'draft',idp:''};db.leave[id]={vl:0,sl:0};db.ben[id]={hmoDeps:0};
   ['c1','c2','c7'].forEach(c=>db.enr.push({empId:id,courseId:c,progress:0,done:null}));
   a.stage='Hired';a.empId=id;r.filled++;
@@ -1565,6 +1578,7 @@ const C={
  vlic:(v,d)=>{if(!has('proc'))return;vnd(d.id).lic=v||null;save();render()},
  apinv:(v,d)=>{if(!canFin())return;const a=S().ap.find(x=>x.id===d.id);a.inv=v===''?null:+v;log('Supply Chain','Invoice '+(v||'cleared')+' on '+a.id+': '+apMatch(a));save();render()},
  bud:(v,d)=>{if(!has('hr','chro'))return;db.bud.plan[d.co][d.l]=Math.max(0,+v||0);log('Budget','Set '+d.co+' '+d.l+' budget to '+peso(+v));save();render()},
+ hcsec:(v,d)=>{if(!has('hr','chro'))return;db.bud.hcs=db.bud.hcs||{};if(v===''||isNaN(+v))delete db.bud.hcs[d.k];else db.bud.hcs[d.k]=Math.max(0,Math.floor(+v));log('Budget','Section plan '+d.k.split('|').join(' › ')+' set to '+(v===''?'none':v));save();render()},
  hcplan:(v,d)=>{if(!has('hr','chro'))return;db.bud.hc[d.co]=Math.max(0,Math.floor(+v||0));log('Budget','Set '+d.co+' headcount plan to '+v);save();render()},
 
  klog:(v,d)=>{const sv=SVC.find(x=>x.id===d.id);if(!canLog(sv))return;const l=db.kpi.logs[d.id]||(db.kpi.logs[d.id]={closed:0,ontime:0,ftr:0});
