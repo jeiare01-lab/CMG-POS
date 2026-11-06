@@ -19,7 +19,7 @@ create table employee (
   emp_no text unique not null,
   full_name text not null,
   company_id int references company(id),
-  dept text, title text,
+  dept text, section text, title text,   -- BA = company, BU = dept, FG = section (SBU is CMG)
   grade text references grade_band(grade),
   monthly_salary numeric(12,2) not null check (monthly_salary >= 0),
   manager_id uuid references employee(id),
