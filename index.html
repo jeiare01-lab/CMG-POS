@@ -423,10 +423,11 @@ function personas(){
   return adm.concat(Object.keys(db.roles||{}).filter(id=>db.emps.some(e=>e.id===id)).map(id=>({id:'p-'+id,label:ROLEL[db.roles[id]]+' · '+db.emps.find(e=>e.id===id).name,role:db.roles[id],emp:id,team:(db.rteam||{})[id]})));
 }
 
-const ALL=['dash','gl','pay','bud','scm','pm','ats','lms','perf','eng','csr','tr','ess','lr','kpi','audit'];
+const ALL=['dash','gl','pay','sal','bud','scm','pm','ats','lms','perf','eng','csr','tr','ess','lr','kpi','audit'];
 const ACCESS={employee:['dash','pm','ess','lms','perf','eng','csr','tr'],supervisor:['dash','scm','pm','ess','lms','perf','eng','csr','tr'],hr:ALL,hrsup:['dash','kpi','ess','lms','perf','eng','csr','tr'],payroll:['dash','pay','bud','scm','ess','tr'],lr:['dash','lr','ess','audit'],proc:['dash','scm','pm','bud','ess'],wh:['dash','scm','pm','ess'],opshead:['dash','scm','pm','bud','ess'],cfo:['dash','scm','pm','bud','pay','ess'],chro:ALL,admin:[...ALL,'adm']};
-const NAV={dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',audit:'Audit log',adm:'Admin tools'};
+const NAV={sal:'Salary structure',dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',audit:'Audit log',adm:'Admin tools'};
 const BLURB={
+ sal:['Salary structure','Where every rank sits against the approved CMG structure, and what closing the gap costs. Basic pay only: allowances and benefits are not in the structure or in this view.'],
  adm:['Admin tools','Add and remove what each tab offers: courses, Rocks, warehouses, grade bands, offenses and department budgets. Administrator only.'],
  dash:['Overview','Where the nine modules touch each other right now.'],
  pay:['Timekeeping & Payroll','Attendance in, payslips out. Statutory deductions, loans and disciplinary deductions land here automatically.'],
@@ -1365,6 +1366,27 @@ function viewGl(){
 
 /* ---- Admin tools ---- */
 ui.admB=null;
+function viewSal(){
+  if(!has('hr','chro','admin'))return head('sal')+'<div class="note">HR and CHRO only.</div>';
+  const act=db.emps.filter(e=>e.active!==false&&BANDS[e.grade]);
+  const co=ui.salCo||'ALL',ph=+ui.salPh||2,pool=co==='ALL'?act:act.filter(e=>e.sbu===co);
+  const fl=e=>BANDS[e.grade][0],ce=e=>BANDS[e.grade][2],gap=e=>Math.max(0,fl(e)-e.salary);
+  const below=pool.filter(e=>e.salary<fl(e)),above=pool.filter(e=>e.salary>ce(e)),inb=pool.length-below.length-above.length;
+  const mg=below.reduce((t,e)=>t+gap(e),0),yr=mg*13;
+  const tile=(n,l)=>`<div class="tile"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  let h=head('sal',`<div class="form"><label class="f">Company<select data-ch="salco">${[['ALL','All CMG']].concat(COS.map(c=>[c,c])).map(o=>`<option value="${o[0]}"${o[0]===co?' selected':''}>${o[1]}</option>`).join('')}</select></label><label class="f">Close the gap over<select data-ch="salph">${[1,2,3].map(n=>`<option value="${n}"${n===ph?' selected':''}>${n} year${n>1?'s':''}</option>`).join('')}</select></label></div>`);
+  h+=`<div class="tiles">${tile(pool.length,'Ranks measured')}${tile(below.length+' ('+Math.round(below.length/Math.max(1,pool.length)*100)+'%)','Below grade floor')}${tile(inb,'Inside the band')}${tile(above.length,'Above the ceiling')}${tile(money(mg),'Monthly gap to floors')}${tile(money(yr),'Yearly, with 13th month')}</div>`;
+  h+=`<div class="note">Floor is the Entry-level minimum of the grade, ceiling is the Q3 maximum. Basic pay only. The yearly figure is basic plus 13th month and leaves out employer SSS, PhilHealth, Pag-IBIG, overtime and any allowance set as a percent of basic, so the true cost runs higher.</div>`;
+  const ys=[1,2,3].map(k=>Math.min(1,k/ph)*yr);
+  h+=`<div class="card"><h3>Phasing: ${ph}-year catch-up</h3>${table([['Year'],['Share of gap closed','r'],['Added base cost that year','r']],[1,2,3].map((k,i)=>`<tr><td>${2026+k}</td><td class="r">${Math.round(Math.min(1,k/ph)*100)}%</td><td class="r">${money(ys[i])}</td></tr>`))}<p class="small muted">Each year lifts everyone below the floor by an equal step, so the cost is a run rate, not a one-off.</p></div>`;
+  const gs=Object.keys(BANDS).sort((a,b)=>(+a.replace(/\D/g,''))-(+b.replace(/\D/g,'')));
+  h+=`<div class="card"><h3>By grade</h3>${table([['Grade'],['Floor to ceiling','r'],['Ranks','r'],['Below','r'],['Inside','r'],['Above','r'],['Monthly gap','r']],gs.map(g=>{const r=pool.filter(e=>e.grade===g);if(!r.length)return '';const b=r.filter(e=>e.salary<BANDS[g][0]),a=r.filter(e=>e.salary>BANDS[g][2]);return `<tr><td>${esc(g)}</td><td class="r small">${money(BANDS[g][0])} to ${money(BANDS[g][2])}</td><td class="r">${r.length}</td><td class="r">${b.length}</td><td class="r">${r.length-b.length-a.length}</td><td class="r">${a.length}</td><td class="r">${money(b.reduce((t,e)=>t+gap(e),0))}</td></tr>`}))}</div>`;
+  h+=`<div class="card"><h3>By company</h3>${table([['Company'],['Ranks','r'],['Below floor','r'],['Monthly gap','r'],['Yearly, with 13th','r']],COS.map(c=>{const r=act.filter(e=>e.sbu===c),b=r.filter(e=>e.salary<fl(e)),m=b.reduce((t,e)=>t+gap(e),0);return `<tr><td>${c}</td><td class="r">${r.length}</td><td class="r">${b.length}</td><td class="r">${money(m)}</td><td class="r">${money(m*13)}</td></tr>`}))}</div>`;
+  const top=below.slice().sort((a,b)=>gap(b)-gap(a)).slice(0,15);
+  h+=`<div class="card"><h3>Largest gaps (15)</h3>${table([['Rank'],['Company'],['Title'],['Grade'],['Basic','r'],['Floor','r'],['Gap','r']],top.map(e=>`<tr><td>${esc(e.name)}</td><td>${esc(e.sbu)}</td><td class="small">${esc(e.title)}</td><td>${esc(e.grade)}</td><td class="r">${money(e.salary)}</td><td class="r">${money(fl(e))}</td><td class="r">${money(gap(e))}</td></tr>`))}<p class="small muted">A gap this large on a senior grade is often a stale grade label, not underpay. Confirm the grade first.</p></div>`;
+  h+=`<div class="card"><h3>Above the ceiling: check the grade (${above.length})</h3>${table([['Rank'],['Company'],['Title'],['Grade'],['Basic','r'],['Ceiling','r']],above.map(e=>`<tr><td>${esc(e.name)}</td><td>${esc(e.sbu)}</td><td class="small">${esc(e.title)}</td><td>${esc(e.grade)}</td><td class="r">${money(e.salary)}</td><td class="r">${money(ce(e))}</td></tr>`))}</div>`;
+  return h;
+}
 function viewAdm(){
   if(role()!=='admin')return head('adm')+'<div class="note">Administrator only.</div>';
   let h=head('adm');
@@ -1403,7 +1425,7 @@ function viewAdm(){
     ${table([['Account'],['Proposed','r'],['']],(sel.dept_budget_line||[]).slice().sort((a,b)=>String(a.account_code||'ZZ').localeCompare(String(b.account_code||'ZZ'))).map(l=>`<tr><td class="wrap">${esc(l.account_code||'NEW')} · ${esc(l.account)}</td><td class="r mono">${esc(money(+l.proposed))}</td><td><button class="btn sm" data-act="admlndel" data-id="${esc(l.id)}">Remove</button></td></tr>`))}`:''}</div>`}
   return h;
 }
-const VIEWS={gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
+const VIEWS={sal:viewSal,gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
 function render(){
   const y=window.scrollY,allowed=ACCESS[role()];
   if(!allowed.includes(ui.tab))ui.tab='dash';
@@ -1639,6 +1661,7 @@ const A={
 };
 const C={
 
+ salco:v=>{ui.salCo=v;render()},salph:v=>{ui.salPh=+v;render()},
  admband:(v,d)=>{if(role()!=='admin')return;db.bands=db.bands||JSON.parse(JSON.stringify(BANDS));db.bands[d.g][+d.i]=Math.max(0,+v||0);applyRefs();log('Admin','Band '+d.g+' '+['min','mid','max'][+d.i]+' set to '+v);save();render()},
  admbsel:v=>{ui.admB=v;render()},
 
