@@ -1003,6 +1003,12 @@ function viewBud(){
    <p class="small muted">Hiring checks this plan. A hire that would pass the approved headcount is blocked unless the CHRO approves it.</p></div>`;
   {const SR=secRows().filter(r=>sel==='ALL'||r.co===sel),tc=SR.reduce((a,r)=>a+r.cost,0);
    h+=`<div class="card"><h3>Headcount and people cost by section</h3><p class="small muted" style="margin-top:0">BA › BU › FG. People cost is monthly: basic pay, employer contributions and the 13th-month accrual. A section with a plan blocks hires past it unless the CHRO approves. Leave the plan empty for no section cap.</p>${SR.length?table([['BA › BU › FG'],['Plan','r'],['Active','r'],['Open','r'],['Monthly people cost','r'],['Status']],SR.map(r=>{const over=r.plan!=null&&r.act+r.open>r.plan;return `<tr><td class="wrap"><b>${r.co}</b> › ${esc(r.d)} › ${r.sc?esc(r.sc):'<span class="muted">no section</span>'}</td><td class="r"><input type="number" min="0" style="width:70px" value="${r.plan==null?'':r.plan}" data-ch="hcsec" data-k="${esc(r.k)}" ${edit?'':'disabled'} aria-label="Plan for ${esc(r.k)}"></td><td class="r">${r.act}</td><td class="r">${r.open}</td><td class="r mono">${esc(money(r.cost))}</td><td>${r.plan==null?pill('No plan'):over?pill('Over by '+(r.act+r.open-r.plan),'bad'):pill('Within','good')}</td></tr>`}).concat([`<tr><td><b>Total</b></td><td></td><td class="r">${SR.reduce((a,r)=>a+r.act,0)}</td><td class="r">${SR.reduce((a,r)=>a+r.open,0)}</td><td class="r mono"><b>${esc(money(tc))}</b></td><td></td></tr>`])):'<p class="muted small">Load employees first. Sections appear as you import them.</p>'}</div>`}
+  {const DB=(window.DEPT||[]).filter(x=>sel==='ALL'||(x.company&&x.company.code===sel));
+   if(window.DEPT){h+=DB.length?DB.map(x=>{const L=(x.dept_budget_line||[]).slice().sort((a,b)=>String(a.account_code||'ZZ').localeCompare(String(b.account_code||'ZZ'))),sm=k=>L.reduce((a,l)=>a+(+l[k]||0),0),fy=sm('fy_estimate'),td=sm('topdown'),pr=sm('proposed'),cats=[...new Set(L.map(l=>l.category))];
+     return `<div class="card"><h3>${esc(x.company?x.company.code:'')} › ${esc(x.dept)} · FY${x.fiscal_year} budget ${pill(x.status,x.status==='Approved'?'good':'warn')}</h3><div class="grid tiles"><div class="tile"><div class="n">${esc(money(fy))}</div><div class="l">2026 full-year estimate</div></div><div class="tile"><div class="n">${esc(money(td))}</div><div class="l">Top-down 2027</div></div><div class="tile"><div class="n">${esc(money(pr))}</div><div class="l">Proposed 2027 · ${fy?(pr/fy-1>=0?'+':'')+((pr/fy-1)*100).toFixed(1):'0'}% vs 2026</div></div><div class="tile"><div class="n">${esc(money(pr-td))}</div><div class="l">Proposed vs top-down</div></div></div>
+     ${table([['Category'],['2026 estimate','r'],['Top-down','r'],['Proposed','r'],['vs 2026','r']],cats.map(c=>{const a=L.filter(l=>l.category===c),f=a.reduce((t,l)=>t+ +l.fy_estimate,0),t=a.reduce((u,l)=>u+ +l.topdown,0),p=a.reduce((u,l)=>u+ +l.proposed,0);return `<tr><td class="wrap">${esc(c)}</td><td class="r mono">${esc(money(f))}</td><td class="r mono">${esc(money(t))}</td><td class="r mono">${esc(money(p))}</td><td class="r">${f?((p/f-1)*100).toFixed(1)+'%':'new'}</td></tr>`}))}
+     <details style="margin-top:10px"><summary class="small"><b>All ${L.length} accounts and the reasoning</b></summary>${table([['Account'],['2026 estimate','r'],['Proposed','r'],['Why']],L.map(l=>`<tr><td class="wrap">${esc(l.account_code||'NEW')} · ${esc(l.account)}</td><td class="r mono">${esc(money(+l.fy_estimate))}</td><td class="r mono">${esc(money(+l.proposed))}</td><td class="wrap small">${esc(l.rationale||'')}</td></tr>`))}</details>
+     <p class="small muted">Read from the cloud database. Top-down is the allocation Finance handed down; proposed is HR's bottom-up. The gap is the conversation to have with Finance.</p></div>`}).join(''):`<div class="card"><h3>Department budgets</h3><p class="muted small">No department budget loaded for ${sel==='ALL'?'CMG':sel} yet.</p></div>`}}
   if(edit)h+=`<div class="card"><h3>Set annual budget (FY${B.fy})</h3>${table([['Line'],...COS.map(c=>[c,'r'])],LINES.map(l=>`<tr><td>${l.n}</td>${COS.map(co=>`<td class="r"><input type="number" min="0" step="1000" style="width:110px" value="${B.plan[co][l.k]}" data-ch="bud" data-co="${co}" data-l="${l.k}" aria-label="${l.n} ${co}"></td>`).join('')}</tr>`))}</div>`;
   if(has('hr','chro','payroll')){
     const rec=B.manual.filter(m=>!m.base).slice(-8).reverse();
@@ -1635,7 +1641,12 @@ async function enter(){
   on=true;gate().remove();
   if(!r){await doPush()}else ok();
   render();
+  loadDept();
  }catch(e){offline('Cloud error: '+(e.message||e))}
+}
+async function loadDept(){
+ try{const {data,error}=await sb.from('dept_budget').select('id,fiscal_year,dept,status,company(code),dept_budget_line(account_code,account,category,cost_type,fy_estimate,topdown,proposed,rationale)').order('fiscal_year',{ascending:false});
+  if(!error){window.DEPT=data||[];render()}}catch(e){}
 }
 async function doPush(){
  if(busy){t=setTimeout(doPush,800);return}
