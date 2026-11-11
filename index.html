@@ -424,9 +424,10 @@ function personas(){
 }
 
 const ALL=['dash','gl','pay','bud','scm','pm','ats','lms','perf','eng','csr','tr','ess','lr','kpi','audit'];
-const ACCESS={employee:['dash','pm','ess','lms','perf','eng','csr','tr'],supervisor:['dash','scm','pm','ess','lms','perf','eng','csr','tr'],hr:ALL,hrsup:['dash','kpi','ess','lms','perf','eng','csr','tr'],payroll:['dash','pay','bud','scm','ess','tr'],lr:['dash','lr','ess','audit'],proc:['dash','scm','pm','bud','ess'],wh:['dash','scm','pm','ess'],opshead:['dash','scm','pm','bud','ess'],cfo:['dash','scm','pm','bud','pay','ess'],chro:ALL,admin:ALL};
-const NAV={dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',audit:'Audit log'};
+const ACCESS={employee:['dash','pm','ess','lms','perf','eng','csr','tr'],supervisor:['dash','scm','pm','ess','lms','perf','eng','csr','tr'],hr:ALL,hrsup:['dash','kpi','ess','lms','perf','eng','csr','tr'],payroll:['dash','pay','bud','scm','ess','tr'],lr:['dash','lr','ess','audit'],proc:['dash','scm','pm','bud','ess'],wh:['dash','scm','pm','ess'],opshead:['dash','scm','pm','bud','ess'],cfo:['dash','scm','pm','bud','pay','ess'],chro:ALL,admin:[...ALL,'adm']};
+const NAV={dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',audit:'Audit log',adm:'Admin tools'};
 const BLURB={
+ adm:['Admin tools','Add and remove what each tab offers: courses, Rocks, warehouses, grade bands, offenses and department budgets. Administrator only.'],
  dash:['Overview','Where the nine modules touch each other right now.'],
  pay:['Timekeeping & Payroll','Attendance in, payslips out. Statutory deductions, loans and disciplinary deductions land here automatically.'],
  ats:['Hiring','Requisition to hire. The offer is blocked until the candidate clears GWC. A hire creates the employee record, payroll entry and onboarding courses.'],
@@ -607,6 +608,8 @@ function seedLive(){
   save();return d;
 }
 db=load();if(!db)seedLive();else if(!db.live)migrate();
+function applyRefs(){if(db.bands){Object.keys(BANDS).forEach(k=>{if(!db.bands[k])delete BANDS[k]});Object.assign(BANDS,db.bands)}if(db.offenses){OFFENSES.length=0;db.offenses.forEach(o=>OFFENSES.push(o))}}
+applyRefs();
 const ui={tab:'dash',persona:db.live?'p-adm-e1':'p-hr',modal:null,toast:'',reqSel:'R-101',tr:null,lrOpen:null};
 const me=()=>{const L=personas();return L.find(p=>p.id===ui.persona)||L[0]};
 const emp=id=>db.emps.find(e=>e.id===id)||{id,name:'(unknown)',flags:[]};
@@ -1359,7 +1362,48 @@ function viewGl(){
   return h;
 }
 
-const VIEWS={gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit};
+
+/* ---- Admin tools ---- */
+ui.admB=null;
+function viewAdm(){
+  if(role()!=='admin')return head('adm')+'<div class="note">Administrator only.</div>';
+  let h=head('adm');
+  const g=(t,id,txt)=>`<tr><td><b>${t}</b></td><td class="wrap small">${txt}</td><td>${id?`<button class="btn sm" data-act="tab" data-id="${id}">Open</button>`:''}</td></tr>`;
+  h+=`<div class="card"><h3>Where each tab gets its content</h3>${table([['Tab'],['What you can add, and where'],['']],[
+   g('Go-live','gl','Employees (paste or CSV), roles, administrators.'),
+   g('Payroll','pay','Attendance, loans and adjustments per employee. Grade bands are set below.'),
+   g('Budget','bud','Company plan and headcount by section in the tab. Department budgets are set below.'),
+   g('Supply Chain','scm','Items, vendors, customers and requests in the tab (Masters). Warehouses are set below.'),
+   g('Projects','pm','Projects, tasks, crew, risks and updates in the tab.'),
+   g('Hiring','ats','Requisitions and candidates in the tab.'),
+   g('Learning',null,'Course catalog is set below.'),
+   g('Performance',null,'Company Rocks are set below. Individual Rocks come from the people using the tab.'),
+   g('Labor Relations',null,'Offense and penalty table is set below. Cases are opened in the tab.'),
+   g('HR KPI Cascade','kpi','The 115-service catalog is fixed for now. Targets and logs are edited in the tab.'),
+   g('Engagement, CSR, Total Rewards','eng','Records come from the people using these tabs.')
+  ])}</div>`;
+  const nx=(arr)=>Math.max(0,...arr.map(x=>+String(x.id).replace(/\D/g,'')||0))+1;
+  h+=`<div class="card"><h3>Learning · course catalog</h3>${table([['Course'],['Hours','r'],['Unlocks layer'],['Mandatory'],['']],db.courses.map(c=>`<tr><td class="wrap">${esc(c.title)}</td><td class="r">${c.hrs}</td><td>${c.unlocks?'L'+c.unlocks:'none'}</td><td>${c.must?'Yes':'No'}</td><td><button class="btn sm" data-act="admcdel" data-id="${c.id}">Remove</button></td></tr>`))}
+   <div class="form" style="margin-top:10px"><label class="f">Title<input id="ad-ct"></label><label class="f">Hours<input id="ad-ch" type="number" min="1" value="4" style="width:70px"></label><label class="f">Unlocks layer<select id="ad-cu">${opts([[0,'None'],...[1,2,3,4,5,6,7].map(n=>[n,'L'+n])],0)}</select></label><label class="f">Mandatory<select id="ad-cm">${opts([['no','No'],['yes','Yes']],'no')}</select></label><button class="btn primary" data-act="admcadd">Add course</button></div></div>`;
+  h+=`<div class="card"><h3>Performance · company Rocks</h3>${table([['Rock'],['Individual Rocks under it','r'],['']],db.crocks.map(c=>`<tr><td class="wrap">${esc(c.title)}</td><td class="r">${db.rocks.filter(r=>r.parent===c.id).length}</td><td><button class="btn sm" data-act="admrdel" data-id="${c.id}">Remove</button></td></tr>`))}
+   <div class="form" style="margin-top:10px"><label class="f">New company Rock<input id="ad-rt" style="min-width:240px"></label><button class="btn primary" data-act="admradd">Add Rock</button></div></div>`;
+  h+=`<div class="card"><h3>Supply Chain · warehouses</h3>${table([['Warehouse'],['Company'],['Stock lines','r'],['']],db.scm.wh.map(w=>`<tr><td class="wrap">${esc(w.id)} · ${esc(w.name)}</td><td>${esc(w.co)}</td><td class="r">${Object.keys(db.scm.stock[w.id]||{}).length}</td><td><button class="btn sm" data-act="admwdel" data-id="${w.id}">Remove</button></td></tr>`))}
+   <div class="form" style="margin-top:10px"><label class="f">Company<select id="ad-wc">${opts(COS)}</select></label><label class="f">Name<input id="ad-wn" placeholder="Main yard"></label><button class="btn primary" data-act="admwadd">Add warehouse</button></div></div>`;
+  h+=`<div class="card"><h3>Payroll and hiring · grade bands</h3><p class="small muted" style="margin-top:0">Monthly basic: minimum, midpoint, maximum. Hiring, merit and compa-ratio read these.</p>${table([['Grade'],['Min','r'],['Mid','r'],['Max','r'],['']],Object.keys(BANDS).sort().map(k=>`<tr><td><b>${k}</b></td>${[0,1,2].map(i=>`<td class="r"><input type="number" min="0" step="500" style="width:110px" value="${BANDS[k][i]}" data-ch="admband" data-g="${k}" data-i="${i}" aria-label="${k} ${['min','mid','max'][i]}"></td>`).join('')}<td>${BANDS[k][0]<=BANDS[k][1]&&BANDS[k][1]<=BANDS[k][2]?'':pill('Order is wrong','bad')} <button class="btn sm" data-act="admbdel" data-id="${k}">Remove</button></td></tr>`))}
+   <div class="form" style="margin-top:10px"><label class="f">Grade<input id="ad-bg" placeholder="G9" style="width:70px"></label><label class="f">Min<input id="ad-b0" type="number" min="0" style="width:110px"></label><label class="f">Mid<input id="ad-b1" type="number" min="0" style="width:110px"></label><label class="f">Max<input id="ad-b2" type="number" min="0" style="width:110px"></label><button class="btn primary" data-act="admbadd">Add grade</button></div></div>`;
+  h+=`<div class="card"><h3>Labor Relations · offenses and penalty ladder</h3>${table([['Code'],['Offense'],['Category'],['Penalty ladder'],['']],OFFENSES.map(o=>`<tr><td><b>${esc(o.code)}</b></td><td class="wrap">${esc(o.name)}</td><td>${esc(o.cat)}</td><td class="wrap small">${o.pen.map(esc).join(' → ')}</td><td><button class="btn sm" data-act="admodel" data-id="${esc(o.code)}">Remove</button></td></tr>`))}
+   <div class="form" style="margin-top:10px"><label class="f">Code<input id="ad-oc" placeholder="SLP" style="width:80px"></label><label class="f">Offense<input id="ad-on" style="min-width:200px"></label><label class="f">Category<select id="ad-ok">${opts(['Minor','Major','Grave'],'Minor')}</select></label><label class="f">Penalty ladder, comma separated<input id="ad-op" placeholder="Written warning, Suspension 3 days, Dismissal" style="min-width:300px"></label><button class="btn primary" data-act="admoadd">Add offense</button></div></div>`;
+  const D=window.DEPT;
+  if(!D)h+=`<div class="card"><h3>Budget · department budgets</h3><p class="muted small">Sign in to the cloud copy to manage department budgets. They live in the database, not in this browser.</p></div>`;
+  else{
+   const sel=D.find(x=>x.id===ui.admB)||D[0];if(sel)ui.admB=sel.id;
+   h+=`<div class="card"><h3>Budget · department budgets</h3>${D.length?`<div class="row" style="margin-bottom:8px"><label class="f">Budget<select data-ch="admbsel">${opts(D.map(x=>[x.id,(x.company?x.company.code:'')+' › '+x.dept+' · FY'+x.fiscal_year+' · '+x.status]),ui.admB)}</select></label></div>`:'<p class="muted small">None yet. Create one below.</p>'}
+    <div class="form"><label class="f">Company<select id="ad-dc">${opts(COS)}</select></label><label class="f">Department<input id="ad-dd" value="Human Resources" style="min-width:160px"></label><label class="f">Fiscal year<input id="ad-dy" type="number" value="2027" style="width:90px"></label><label class="f">Top-down total<input id="ad-dt" type="number" min="0" style="width:130px"></label><button class="btn primary" data-act="admdbadd">Create budget</button></div>
+    ${sel?`<h4 style="margin:14px 0 6px">Add an account to ${esc(sel.company?sel.company.code:'')} › ${esc(sel.dept)}</h4><div class="form"><label class="f">Account code<input id="ad-ac" style="width:100px" placeholder="7050013"></label><label class="f">Account<input id="ad-an" style="min-width:180px"></label><label class="f">Category<input id="ad-ag" list="ad-cats" style="min-width:170px"><datalist id="ad-cats">${[...new Set((sel.dept_budget_line||[]).map(l=>l.category))].map(c=>`<option value="${esc(c)}">`).join('')}</datalist></label><label class="f">2026 estimate<input id="ad-af" type="number" min="0" value="0" style="width:120px"></label><label class="f">Escalator %<input id="ad-ae" type="number" step="0.5" value="4" style="width:80px"></label><label class="f">Adjustment ₱<input id="ad-aj" type="number" value="0" style="width:110px"></label><label class="f">Why<input id="ad-aw" style="min-width:220px"></label><button class="btn primary" data-act="admlnadd">Add account</button></div><p class="small muted">Proposed = 2026 estimate × (1 + escalator) + adjustment.</p>
+    ${table([['Account'],['Proposed','r'],['']],(sel.dept_budget_line||[]).slice().sort((a,b)=>String(a.account_code||'ZZ').localeCompare(String(b.account_code||'ZZ'))).map(l=>`<tr><td class="wrap">${esc(l.account_code||'NEW')} · ${esc(l.account)}</td><td class="r mono">${esc(money(+l.proposed))}</td><td><button class="btn sm" data-act="admlndel" data-id="${esc(l.id)}">Remove</button></td></tr>`))}`:''}</div>`}
+  return h;
+}
+const VIEWS={gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
 function render(){
   const y=window.scrollY,allowed=ACCESS[role()];
   if(!allowed.includes(ui.tab))ui.tab='dash';
@@ -1380,6 +1424,29 @@ function copyBtn(id){return `<button class="btn sm" data-act="copy" data-id="${i
 
 /* ============ actions ============ */
 const A={
+
+ admcadd:()=>{if(role()!=='admin')return;const t=$('#ad-ct').value.trim(),hr=+$('#ad-ch').value,u=+$('#ad-cu').value;if(!t||!(hr>0)){toast('Course needs a title and hours');return}
+  const id='c'+(Math.max(0,...db.courses.map(c=>+String(c.id).replace(/\D/g,'')||0))+1);db.courses.push({id,title:t,hrs:hr,unlocks:u,must:$('#ad-cm').value==='yes'});log('Admin','Added course '+t);save();render()},
+ admcdel:d=>{if(role()!=='admin')return;if(db.enr.some(e=>e.courseId===d.id)){toast('Blocked: people are enrolled in this course');return}db.courses=db.courses.filter(c=>c.id!==d.id);log('Admin','Removed course '+d.id);save();render()},
+ admradd:()=>{if(role()!=='admin')return;const t=$('#ad-rt').value.trim();if(!t){toast('Write the Rock first');return}
+  const id='cr'+(Math.max(0,...db.crocks.map(c=>+String(c.id).replace(/\D/g,'')||0))+1);db.crocks.push({id,title:t});log('Admin','Added company Rock: '+t);save();render()},
+ admrdel:d=>{if(role()!=='admin')return;if(db.rocks.some(r=>r.parent===d.id)){toast('Blocked: individual Rocks sit under this one');return}db.crocks=db.crocks.filter(c=>c.id!==d.id);log('Admin','Removed company Rock '+d.id);save();render()},
+ admwadd:()=>{if(role()!=='admin')return;const co=$('#ad-wc').value,n=$('#ad-wn').value.trim();if(!n){toast('Name the warehouse');return}
+  let id='WH-'+co,k=2;while(db.scm.wh.some(w=>w.id===id))id='WH-'+co+'-'+(k++);db.scm.wh.push({id,co,name:n});db.scm.stock[id]={};log('Admin','Added warehouse '+id);save();render()},
+ admwdel:d=>{if(role()!=='admin')return;if(Object.values(db.scm.stock[d.id]||{}).some(q=>q>0)){toast('Blocked: stock is still in this warehouse');return}db.scm.wh=db.scm.wh.filter(w=>w.id!==d.id);delete db.scm.stock[d.id];log('Admin','Removed warehouse '+d.id);save();render()},
+ admbadd:()=>{if(role()!=='admin')return;const g=$('#ad-bg').value.trim().toUpperCase(),v=[0,1,2].map(i=>+$('#ad-b'+i).value);if(!g||BANDS[g]||!(v[0]>0&&v[0]<=v[1]&&v[1]<=v[2])){toast('Use a new grade code and min ≤ mid ≤ max');return}
+  db.bands=db.bands||JSON.parse(JSON.stringify(BANDS));db.bands[g]=v;applyRefs();log('Admin','Added grade band '+g);save();render()},
+ admbdel:d=>{if(role()!=='admin')return;if(db.emps.some(e=>e.grade===d.id)){toast('Blocked: employees hold grade '+d.id);return}db.bands=db.bands||JSON.parse(JSON.stringify(BANDS));delete db.bands[d.id];applyRefs();log('Admin','Removed grade band '+d.id);save();render()},
+ admoadd:()=>{if(role()!=='admin')return;const c=$('#ad-oc').value.trim().toUpperCase(),n=$('#ad-on').value.trim(),pen=$('#ad-op').value.split(',').map(x=>x.trim()).filter(Boolean);if(!c||!n||!pen.length||OFFENSES.some(o=>o.code===c)){toast('New code, offense and at least one penalty');return}
+  db.offenses=db.offenses||JSON.parse(JSON.stringify(OFFENSES));db.offenses.push({code:c,name:n,cat:$('#ad-ok').value,pen});applyRefs();log('Admin','Added offense '+c);save();render()},
+ admodel:d=>{if(role()!=='admin')return;if(db.cases.some(x=>x.code===d.id)){toast('Blocked: a case uses this offense');return}db.offenses=(db.offenses||JSON.parse(JSON.stringify(OFFENSES))).filter(o=>o.code!==d.id);applyRefs();log('Admin','Removed offense '+d.id);save();render()},
+ admdbadd:async()=>{if(role()!=='admin'||!window.cloud||!window.cloud.sb())return;const co=$('#ad-dc').value,dp=$('#ad-dd').value.trim(),fy=+$('#ad-dy').value,td=+$('#ad-dt').value||0;if(!dp||!(fy>2000)){toast('Department and year are needed');return}
+  const sb=window.cloud.sb(),{data:c}=await sb.from('company').select('id').eq('code',co).single();const {error}=await sb.from('dept_budget').insert({fiscal_year:fy,company_id:c.id,dept:dp,topdown_total:td});
+  if(error){toast(/duplicate/i.test(error.message)?'That budget already exists':'Not saved: '+error.message);return}log('Admin','Created '+co+' '+dp+' FY'+fy+' budget');save();await window.cloud.reload();toast('Budget created')},
+ admlnadd:async()=>{if(role()!=='admin'||!window.cloud||!window.cloud.sb()||!ui.admB)return;const nm=$('#ad-an').value.trim(),cat=$('#ad-ag').value.trim(),fy=+$('#ad-af').value||0,es=(+$('#ad-ae').value||0)/100,aj=+$('#ad-aj').value||0;if(!nm||!cat){toast('Account and category are needed');return}
+  const row={budget_id:ui.admB,account_code:$('#ad-ac').value.trim()||null,account:nm,category:cat.toUpperCase(),fy_estimate:fy,escalator:es,adjustment:aj,proposed:Math.round((fy*(1+es)+aj)*100)/100,rationale:$('#ad-aw').value.trim()||null};
+  const {error}=await window.cloud.sb().from('dept_budget_line').insert(row);if(error){toast(/duplicate/i.test(error.message)?'That account is already in this budget':'Not saved: '+error.message);return}log('Admin','Added budget account '+nm);save();await window.cloud.reload();toast('Account added')},
+ admlndel:async d=>{if(role()!=='admin'||!window.cloud||!window.cloud.sb())return;const {error}=await window.cloud.sb().from('dept_budget_line').delete().eq('id',d.id);if(error){toast('Not removed: '+error.message);return}log('Admin','Removed a budget account');save();await window.cloud.reload()},
 
  pstab:d=>{ui.ps=d.id;render()},
  tadd:()=>{const id=ui.pj,nmv=$('#tk-nm').value.trim(),a=$('#tk-st').value,b=$('#tk-en').value;if(!canPm(id))return;if(!nmv||!a||!b||b<a){toast('Name, and a finish date on or after the start');return}
@@ -1571,6 +1638,9 @@ const A={
 };
 const C={
 
+ admband:(v,d)=>{if(role()!=='admin')return;db.bands=db.bands||JSON.parse(JSON.stringify(BANDS));db.bands[d.g][+d.i]=Math.max(0,+v||0);applyRefs();log('Admin','Band '+d.g+' '+['min','mid','max'][+d.i]+' set to '+v);save();render()},
+ admbsel:v=>{ui.admB=v;render()},
+
  pjsel:v=>{ui.pj=v;render()},
  gltick:(v,d)=>{db.golive=db.golive||{t:{}};db.golive.t[d.id]=!db.golive.t[d.id];log('Go-live',(db.golive.t[d.id]?'Confirmed: ':'Unchecked: ')+d.id);save();render()},
  pjmgr:(v,d)=>{if(!has('hr','chro','opshead'))return;pjm(d.id).mgr=v||null;log('Projects','Manager of '+d.id+' set to '+(v?nm(v):'none'));save();render()},
@@ -1636,7 +1706,7 @@ async function enter(){
   if(!['admin','hr','chro'].includes(role)){card(`<p>Your role (${esc(role)}) does not open the full OS yet. Employee and supervisor screens come with the next release.</p><button id="g-so" style="${bt2}">Sign out</button>`);document.getElementById('g-so').onclick=()=>sb.auth.signOut().then(()=>login());return}
   const {data:r,error}=await sb.from('app_state').select('data,version').eq('id',SID).maybeSingle();
   if(error)throw error;
-  if(r){db=r.data;ver=r.version;try{localStorage.setItem(LSL,JSON.stringify(db))}catch(e){}}
+  if(r){db=r.data;ver=r.version;applyRefs();try{localStorage.setItem(LSL,JSON.stringify(db))}catch(e){}}
   else{if(!db.live)seedLive();ver=0}
   on=true;gate().remove();
   if(!r){await doPush()}else ok();
@@ -1664,6 +1734,7 @@ return{
    sb=m.createClient(URL_,KEY);const {data:{session}}=await sb.auth.getSession();session?enter():login()}
   catch(e){offline('Cannot reach the cloud from here ('+(e.message||e)+').')}
  },
+ sb:()=>sb,reload:()=>loadDept(),
  push(){if(!on||halted||!db.live)return;clearTimeout(t);sav();t=setTimeout(doPush,1200)}
 };
 })();
