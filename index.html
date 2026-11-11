@@ -1687,11 +1687,16 @@ const inp='width:100%;padding:10px;margin:4px 0 10px;border-radius:8px;border:1p
 const bt='padding:10px 14px;border-radius:8px;border:0;background:#f08a24;color:#1a1000;font-weight:700;cursor:pointer;margin-right:8px';
 const bt2='padding:10px 14px;border-radius:8px;border:1px solid #2a4a73;background:transparent;color:#e8eef8;cursor:pointer';
 const chip=(txt,col)=>{let c=document.getElementById('sync');if(!c){c=document.createElement('button');c.id='sync';c.style.cssText='position:fixed;right:12px;bottom:12px;z-index:900;padding:6px 12px;border-radius:999px;font-size:12px;cursor:pointer;border:1px solid';c.onclick=()=>{if(halted){location.reload()}else if(confirm('Sign out of the cloud?')){sb.auth.signOut().then(()=>location.reload())}};document.body.appendChild(c)}c.textContent=txt;c.style.background=col[0];c.style.color=col[1];c.style.borderColor=col[2]};
-const ok=()=>chip('Cloud · saved · tap to sign out',['#0b2a22','#bfeede','#2b6b52']);
+const pwBtn=()=>{if(document.getElementById('pwchg'))return;const c=document.createElement('button');c.id='pwchg';c.textContent='Password';c.style.cssText='position:fixed;left:12px;bottom:12px;z-index:900;padding:6px 12px;border-radius:999px;font-size:12px;cursor:pointer;border:1px solid #2a4a73;background:#0d1b30;color:#cfe0f7';c.onclick=()=>newPw('Change your password.');document.body.appendChild(c)};
+const ok=()=>{pwBtn();chip('Cloud · saved · tap to sign out',['#0b2a22','#bfeede','#2b6b52'])};
 const sav=()=>chip('Cloud · saving…',['#2a2410','#ffe9a8','#6b5a2b']);
 const bad=m=>chip(m,['#3a1414','#ffc9c9','#8a2b2b']);
+function newPw(note){card(`${note?`<p style="margin:0 0 10px">${esc(note)}</p>`:''}<label style="font-size:12px">New password (10 characters or more)</label><input id="g-n1" type="password" autocomplete="new-password" style="${inp}"><label style="font-size:12px">Type it again</label><input id="g-n2" type="password" autocomplete="new-password" style="${inp}"><button id="g-sv" style="${bt}">Save password</button><button id="g-cx" style="${bt2}">Cancel</button>`);
+ document.getElementById('g-cx').onclick=()=>enter();
+ document.getElementById('g-sv').onclick=async()=>{const a=document.getElementById('g-n1').value,b=document.getElementById('g-n2').value;if(a.length<10)return newPw('Use at least 10 characters.');if(a!==b)return newPw('The two entries do not match.');const {error}=await sb.auth.updateUser({password:a});if(error)return newPw(error.message);history.replaceState(null,'',location.pathname);await enter()}}
 function offline(msg){card(`<p style="margin:0 0 12px">${esc(msg)}</p><p style="font-size:13px;opacity:.75">Nothing is lost. Data stays in this browser only until the cloud connects.</p><button id="g-off" style="${bt}">Continue in this browser</button>`);document.getElementById('g-off').onclick=()=>{gate().remove();render()}}
-function login(note){card(`${note?`<p style="margin:0 0 10px;color:#ffd08a">${esc(note)}</p>`:''}<label style="font-size:12px">Email</label><input id="g-e" type="email" autocomplete="username" style="${inp}"><label style="font-size:12px">Password</label><input id="g-p" type="password" autocomplete="current-password" style="${inp}"><button id="g-in" style="${bt}">Sign in</button><button id="g-up" style="${bt2}">Create account</button>`);
+function login(note){card(`${note?`<p style="margin:0 0 10px;color:#ffd08a">${esc(note)}</p>`:''}<label style="font-size:12px">Email</label><input id="g-e" type="email" autocomplete="username" style="${inp}"><label style="font-size:12px">Password</label><input id="g-p" type="password" autocomplete="current-password" style="${inp}"><button id="g-in" style="${bt}">Sign in</button><button id="g-up" style="${bt2}">Create account</button><p style="margin:12px 0 0"><button id="g-fp" style="background:none;border:0;color:#9db8e0;text-decoration:underline;cursor:pointer;padding:0">Forgot password?</button></p>`);
+ document.getElementById('g-fp').onclick=async()=>{const m=document.getElementById('g-e').value.trim();if(!m)return login('Type your email first, then tap Forgot password.');const {error}=await sb.auth.resetPasswordForEmail(m,{redirectTo:location.origin+location.pathname});login(error?error.message:'If that email has an account, a reset link is on its way.')};
  const e=()=>document.getElementById('g-e').value.trim(),pw=()=>document.getElementById('g-p').value;
  document.getElementById('g-in').onclick=async()=>{const {error}=await sb.auth.signInWithPassword({email:e(),password:pw()});error?login(error.message):enter()};
  document.getElementById('g-up').onclick=async()=>{if(pw().length<10)return login('Use at least 10 characters.');const {data,error}=await sb.auth.signUp({email:e(),password:pw()});if(error)return login(error.message);data.session?enter():login('Check your email to confirm, then sign in.')}}
@@ -1732,7 +1737,7 @@ return{
  async boot(){
   card('<p style="margin:0">Connecting…</p>');
   try{const m=await Promise.race([import('https://esm.sh/@supabase/supabase-js@2'),new Promise((_,j)=>setTimeout(()=>j(new Error('timed out')),8000))]);
-   sb=m.createClient(URL_,KEY);const {data:{session}}=await sb.auth.getSession();session?enter():login()}
+   sb=m.createClient(URL_,KEY);sb.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY')newPw('Set a new password for your account.')});const {data:{session}}=await sb.auth.getSession();if(!/type=recovery/.test(location.hash+location.search))session?enter():login()}
   catch(e){offline('Cannot reach the cloud from here ('+(e.message||e)+').')}
  },
  sb:()=>sb,reload:()=>loadDept(),
