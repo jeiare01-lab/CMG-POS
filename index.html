@@ -1717,8 +1717,32 @@ async function enter(){
   on=true;gate().remove();
   if(!r){await doPush()}else ok();
   render();
+  await loadEmps();
   loadDept();
  }catch(e){offline('Cloud error: '+(e.message||e))}
+}
+async function loadEmps(){
+ try{
+  const {data,error}=await sb.from('employee').select('id,emp_no,full_name,dept,section,title,grade,monthly_salary,manager_id,lattice_layer,date_hired,active,company(code)').neq('emp_no','ADMIN-001').limit(2000);
+  if(error||!data||data.length<50)return;
+  const byId={};data.forEach(r=>byId[r.id]=r.emp_no);
+  const cap=x=>x.toLowerCase().replace(/(^|[\s\-.'(])([a-zñ])/g,(m,p,c)=>p+c.toUpperCase()).replace(/\b(Ii|Iii|Iv|Jr)\b/g,m=>m==='Jr'?'Jr.':m.toUpperCase());
+  const emps=data.map(r=>{const k=r.full_name.lastIndexOf(',');const l=k<0?r.full_name:r.full_name.slice(0,k),f=k<0?'':r.full_name.slice(k+1);const name=cap((f+' '+l).replace(/\s+/g,' ').trim());
+   return {id:r.emp_no,name,sbu:r.company?r.company.code:'PSC',dept:r.dept||'General',sec:r.section||'',title:r.title||'Employee',grade:r.grade,salary:+r.monthly_salary,mgr:r.manager_id?byId[r.manager_id]||null:null,lat:r.lattice_layer||1,hired:r.date_hired,active:r.active!==false,flags:[]}});
+  const {data:gb}=await sb.from('grade_band').select('grade,band_min,band_mid,band_max');
+  if(gb&&gb.length){db.bands={};gb.forEach(g=>{db.bands[g.grade]=[+g.band_min,+g.band_mid,+g.band_max]});applyRefs()}
+  db.emps=emps;
+  emps.forEach(e=>{db.att[e.id]=db.att[e.id]||{absent:0,unpaid:0,late:0,ot:0,nd:0};db.appr[e.id]=db.appr[e.id]||{kpi:3,values:3,status:'draft',idp:''};db.leave[e.id]=db.leave[e.id]||{vl:10,sl:5};db.ben[e.id]=db.ben[e.id]||{hmoDeps:0}});
+  const me_=emps.find(e=>e.id==='00001034');
+  db.admins=me_?[me_.id]:[];
+  db.roles=Object.fromEntries(Object.entries(db.roles||{}).filter(([k])=>emps.some(e=>e.id===k)));
+  if(me_&&!db.roles[me_.id])db.roles[me_.id]='hr';
+  window.APPR=null;
+  const {data:am}=await sb.from('approver_matrix').select('employee_id,evaluator_id,evaluator_name,approver1_id,approver1_name,approver2_id,approver2_name');
+  if(am){const eid={};data.forEach(r=>eid[r.id]=r.emp_no);const nm_=i=>{const e=i&&emps.find(x=>x.id===eid[i]);return e?e.name:null};
+   window.APPR=Object.fromEntries(am.map(a=>[eid[a.employee_id],{ev:nm_(a.evaluator_id)||a.evaluator_name,a1:nm_(a.approver1_id)||a.approver1_name,a2:nm_(a.approver2_id)||a.approver2_name}]))}
+  ui.persona=me_?'p-adm-'+me_.id:null;save();render();
+ }catch(e){}
 }
 async function loadDept(){
  try{const {data,error}=await sb.from('dept_budget').select('id,fiscal_year,dept,status,assumptions,company(code),dept_budget_line(id,account_code,account,category,cost_type,prior_actual,budget_current,fy_estimate,topdown,proposed,rationale)').order('fiscal_year',{ascending:false});
@@ -1740,7 +1764,7 @@ return{
    sb=m.createClient(URL_,KEY);sb.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY')newPw('Set a new password for your account.')});const {data:{session}}=await sb.auth.getSession();if(!/type=recovery/.test(location.hash+location.search))session?enter():login()}
   catch(e){offline('Cannot reach the cloud from here ('+(e.message||e)+').')}
  },
- sb:()=>sb,reload:()=>loadDept(),
+ sb:()=>sb,reload:()=>loadDept(),_emps:x=>{sb=x;return loadEmps()},
  push(){if(!on||halted||!db.live)return;clearTimeout(t);sav();t=setTimeout(doPush,1200)}
 };
 })();
