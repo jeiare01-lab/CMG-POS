@@ -910,14 +910,53 @@ const BANDS5=[[1,5],[.95,4],[.9,3],[.8,2],[0,1]];
 const rate5=a=>a==null?null:BANDS5.find(b=>a>=b[0])[1];
 function resum(sid){const K=db.kpi,o=K.olog&&K.olog[sid];if(!o)return;const t={closed:0,ontime:0,ftr:0};Object.keys(o).forEach(n=>{const e=o[n];t.closed+=e.closed;t.ontime+=Math.min(e.closed,e.ontime+(e.ext||0));t.ftr+=e.ftr});K.logs[sid]=t}
 const canClaim=s=>has('hr','chro')||(has('hrsup')&&me().team===s.team);
-ui.kt='bu';ui.kteam='TAT';
+ui.kt='los';ui.kteam='TAT';
 function viewKpi(){
   const K=db.kpi,X=kcalc(),B=X.B;
   if(myTeam())ui.kteam=myTeam();
-  const subs=[['bu','Business unit'],['team','Team'],['ind','Individual'],['s1','Section 1 by goal'],['rules','Definitions']].filter(s=>!(myTeam()&&s[0]==='bu'&&false));
+  const subs=[['los','Line of sight'],['bu','Business unit'],['team','Team'],['ind','Individual'],['s1','Section 1 by goal'],['rules','Definitions']].filter(s=>!(myTeam()&&s[0]==='bu'&&false));
   let h=head('kpi',`<div class="row">${subs.map(s=>`<button class="btn sm ${ui.kt===s[0]?'primary':''}" data-act="ktab" data-id="${s[0]}">${s[1]}</button>`).join('')}</div>`);
   if(K.sample)h+=`<div class="note"><b>Sample numbers.</b> The 115 services, TATs, goal tags and targets are yours. The monthly counts, owners and S4 values below are illustrative so the roll-up has something to show. ${has('hr','chro')?`<button class="btn sm" data-act="kclear">Clear sample data</button>`:'HR clears them before the first real month.'}</div>`;
-  if(ui.kt==='bu')h+=kBu(X);else if(ui.kt==='team')h+=kTeam(X);else if(ui.kt==='ind')h+=kInd(X);else if(ui.kt==='s1')h+=kS1(X);else h+=kRules();
+  if(ui.kt==='los')h+=kLos(X);else if(ui.kt==='bu')h+=kBu(X);else if(ui.kt==='team')h+=kTeam(X);else if(ui.kt==='ind')h+=kInd(X);else if(ui.kt==='s1')h+=kS1(X);else h+=kRules();
+  return h;
+}
+/* Line of Sight: Individual owner -> Team KPI -> Rock (Q3 2027 goal). Patterned on the PGB HR Ecosystem cascade. */
+function svcStatus(s){
+  const K=db.kpi;
+  if(s.ms){const cy=(K.mile&&K.mile[s.id])||[];if(!cy.length)return null;let st='good';
+    cy.forEach(c=>{if(!c.due)return;const d=msDays(c),pt=msPts(c);
+      if(c.done){if(pt<3)st='bad'}else if(d<0)st='bad';else if(d<=14&&st==='good')st='warn'});return st}
+  const l=K.logs[s.id];if(!l||!l.closed)return null;
+  const a=Math.min(ach(l.ontime/l.closed,KT.I1),ach(l.ftr/l.closed,KT.I2));return a>=1?'good':a>=.95?'warn':'bad';
+}
+function kLos(X){
+  const K=db.kpi,ST={good:0,warn:0,bad:0,none:0},byG={},byT={};
+  Object.keys(GOALS).forEach(g=>byG[g]={n:0,good:0,warn:0,bad:0,none:0,teams:{}});
+  Object.keys(TEAMS).forEach(t=>byT[t]={n:0,good:0,warn:0,bad:0,none:0});
+  SVC.forEach(s=>{const st=svcStatus(s)||'none',g=byG[s.goal],tm=g.teams[s.team]||(g.teams[s.team]={n:0,good:0,warn:0,bad:0,none:0,closed:0,ontime:0,own:{}});
+    ST[st]++;g.n++;g[st]++;tm.n++;tm[st]++;byT[s.team].n++;byT[s.team][st]++;
+    const l=s.ms?null:K.logs[s.id];if(l){tm.closed+=l.closed;tm.ontime+=l.ontime}
+    (ownNames(s).length?ownNames(s):(K.owner[s.id]?[K.owner[s.id]]:[])).forEach(n=>tm.own[n]=1)});
+  const rep=ST.good+ST.warn+ST.bad,health=rep?ST.good/rep:null,tot=SVC.length;
+  const cls=v=>v==null?'':v>=.8?'good':v>=.6?'warn':'bad';
+  const bar=(o,n)=>n?`<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--line)" role="img" aria-label="${o.good} on track, ${o.warn} at risk, ${o.bad} off track, ${o.none} not reporting"><i style="width:${o.good/n*100}%;background:var(--good)"></i><i style="width:${o.warn/n*100}%;background:var(--warn)"></i><i style="width:${o.bad/n*100}%;background:var(--bad)"></i></div>`:'';
+  let h=`<div class="grid tiles"><div class="tile"><div class="n">${health==null?pill('No data'):pill(pc(health),cls(health))}</div><div class="l">HR service health<br>${rep} of ${tot} services reporting</div></div>
+   <div class="tile"><div class="n">${ST.good}</div><div class="l">On track<br>${rep?pc(ST.good/rep):'–'} of reporting</div></div>
+   <div class="tile"><div class="n">${ST.warn}</div><div class="l">At risk<br>${rep?pc(ST.warn/rep):'–'} of reporting</div></div>
+   <div class="tile"><div class="n">${ST.bad}</div><div class="l">Off track<br>${rep?pc(ST.bad/rep):'–'} of reporting</div></div>
+   <div class="tile"><div class="n">${ST.none}</div><div class="l">Not reporting<br>no entry yet</div></div></div>`;
+  h+=`<div class="card"><h3>Status distribution</h3>${bar(ST,tot)}<p class="small muted">On track: on-time at or above 95% and first-time-right at or above 98%. At risk: within 5% of both. Off track: below that. A milestone is on track while open cycles are on schedule, at risk within 14 days of due, off track when overdue or late.</p></div>`;
+  h+=`<div class="card"><h3>Line of sight</h3><p class="small muted">Individual owner, then team KPI, then the Q3 2027 goal it serves. Read each goal from the top: its health, then which teams carry it and who owns the services.</p></div>`;
+  Object.keys(GOALS).forEach(k=>{const g=byG[k],gr=g.good+g.warn+g.bad,gh=gr?g.good/gr:null;
+    h+=`<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${k} · ${esc(GOALS[k])}</h3>${gh==null?pill('No data'):pill(pc(gh)+' on track',cls(gh))}</div>
+     <p class="small muted">${g.n} services · ${gr} reporting · ${g.good} on track · ${g.warn} at risk · ${g.bad} off track</p>${bar(g,g.n)}`;
+    const tr=Object.keys(g.teams);
+    h+=tr.length?table([['Team'],['Team KPI · on-time','r'],['Target','r'],['On track','r'],['Owners']],tr.map(t=>{const m=g.teams[t],r2=m.good+m.warn+m.bad,i1=m.closed?m.ontime/m.closed:null;
+      return `<tr><td class="wrap"><b>${t}</b> <span class="small muted">${esc(TEAMS[t].full.split(' · ')[1]||'')}</span></td><td class="r">${ragp(i1,KT.I1)}</td><td class="r">95%</td><td class="r">${m.good} / ${m.n}</td><td class="wrap small">${Object.keys(m.own).length?esc(Object.keys(m.own).join(' · ')):'<span class="muted">No owner yet</span>'}</td></tr>`})):'<p class="small muted">No services tagged to this goal yet.</p>';
+    if(k!=='G3')h+=`<p class="small muted">HR's contribution only. The outcome for this goal is owned outside HR and is not tracked here yet.</p>`;
+    h+='</div>'});
+  h+=`<div class="card"><h3>Team heat map</h3>${table([['Team'],['Services','r'],['Reporting','r'],['On track','r'],['Health','r']],Object.keys(TEAMS).map(t=>{const o=byT[t],r2=o.good+o.warn+o.bad,v=r2?o.good/r2:null;
+    return `<tr><td class="wrap"><b>${esc(TEAMS[t].full)}</b></td><td class="r">${o.n}</td><td class="r">${r2}</td><td class="r">${o.good} / ${r2}</td><td class="r">${v==null?pill('No data'):pill(pc(v),cls(v))}</td></tr>`}))}</div>`;
   return h;
 }
 function kBu(X){
