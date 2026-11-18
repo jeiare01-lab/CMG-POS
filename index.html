@@ -881,7 +881,9 @@ function kcalc(){
   Object.keys(GOALS).forEach(g=>G[g]={n:0,closed:0,ontime:0});
   SVC.forEach(s=>{const b=T[s.team],l=K.logs[s.id],g=G[s.goal],ow=K.owner[s.id];b.n++;if(!s.prop)b.agreed++;g.n++;
     const own=(K.own2&&K.own2[s.id]&&K.own2[s.id].length)?K.own2[s.id].map(x=>x.n):(ow?[ow]:[]);const os=own.map(n=>{const o=O[n]||(O[n]={n:0,agreed:0,closed:0,ontime:0,ftr:0,teams:{}});o.n++;if(!s.prop)o.agreed++;o.teams[s.team]=1;return o});
-    if(l){b.logged++;b.closed+=l.closed;b.ontime+=l.ontime;b.ftr+=l.ftr;g.closed+=l.closed;g.ontime+=l.ontime;os.forEach(o=>{o.closed+=l.closed;o.ontime+=l.ontime;o.ftr+=l.ftr})}});
+    if(l){b.logged++;b.closed+=l.closed;b.ontime+=l.ontime;b.ftr+=l.ftr;g.closed+=l.closed;g.ontime+=l.ontime;const ol=K.olog&&K.olog[s.id];
+      own.forEach((n,i)=>{const o=os[i];let e=l;if(ol&&ol[n]){const q=ol[n];e={closed:q.closed,ontime:Math.min(q.closed,q.ontime+(q.ext||0)),ftr:q.ftr}}else if(ol&&own.length>1)return;
+       o.closed+=e.closed;o.ontime+=e.ontime;o.ftr+=e.ftr;const gg=(o.g=o.g||{})[s.goal]=(o.g[s.goal]||{closed:0,ontime:0,ftr:0});gg.closed+=e.closed;gg.ontime+=e.ontime;gg.ftr+=e.ftr})}});
   Object.keys(T).forEach(t=>{const b=T[t],d=TEAMS[t].s4;b.S1=b.closed?b.ontime/b.closed:null;b.S2=b.closed?b.ftr/b.closed:null;b.S3=b.agreed/b.n;
     b.s4v=K.s4[t]==null?null:K.s4[t];b.S4=ach(b.s4v,d.target,d.dir);
     b.score=wavg([[ach(b.S1,KT.I1),K.w.S1],[ach(b.S2,KT.I2),K.w.S2],[b.S3,K.w.S3],[b.S4,K.w.S4]])});
@@ -890,16 +892,24 @@ function kcalc(){
   return {T,G,O,B};
 }
 const myTeam=()=>has('hrsup')?me().team:null;
-const canLog=s=>has('hr','chro')||(has('hrsup')&&me().team===s.team)||db.kpi.owner[s.id]===pname();
+const fnm=x=>String(x||'').trim().split(/\s+/)[0].toLowerCase();
+const ownNames=s=>{const x=db.kpi.own2&&db.kpi.own2[s.id];return x&&x.length?x.map(o=>o.n):[]};
+const isOwnerOf=(s,n)=>fnm(n)===fnm(pname())&&fnm(n)!=='';
+const canLogO=(s,n)=>has('hr','chro')||(has('hrsup')&&me().team===s.team)||(n!=='_'?isOwnerOf(s,n):db.kpi.owner[s.id]===pname());
+const canLog=s=>has('hr','chro')||(has('hrsup')&&me().team===s.team)||db.kpi.owner[s.id]===pname()||ownNames(s).some(n=>isOwnerOf(s,n));
+const MINV=()=>db.kpi.minv||10;
+const BANDS5=[[1,5],[.95,4],[.9,3],[.8,2],[0,1]];
+const rate5=a=>a==null?null:BANDS5.find(b=>a>=b[0])[1];
+function resum(sid){const K=db.kpi,o=K.olog&&K.olog[sid];if(!o)return;const t={closed:0,ontime:0,ftr:0};Object.keys(o).forEach(n=>{const e=o[n];t.closed+=e.closed;t.ontime+=Math.min(e.closed,e.ontime+(e.ext||0));t.ftr+=e.ftr});K.logs[sid]=t}
 const canClaim=s=>has('hr','chro')||(has('hrsup')&&me().team===s.team);
 ui.kt='bu';ui.kteam='TAT';
 function viewKpi(){
   const K=db.kpi,X=kcalc(),B=X.B;
   if(myTeam())ui.kteam=myTeam();
-  const subs=[['bu','Business unit'],['team','Team'],['ind','Individual'],['rules','Definitions']].filter(s=>!(myTeam()&&s[0]==='bu'&&false));
+  const subs=[['bu','Business unit'],['team','Team'],['ind','Individual'],['s1','Section 1 by goal'],['rules','Definitions']].filter(s=>!(myTeam()&&s[0]==='bu'&&false));
   let h=head('kpi',`<div class="row">${subs.map(s=>`<button class="btn sm ${ui.kt===s[0]?'primary':''}" data-act="ktab" data-id="${s[0]}">${s[1]}</button>`).join('')}</div>`);
   if(K.sample)h+=`<div class="note"><b>Sample numbers.</b> The 115 services, TATs, goal tags and targets are yours. The monthly counts, owners and S4 values below are illustrative so the roll-up has something to show. ${has('hr','chro')?`<button class="btn sm" data-act="kclear">Clear sample data</button>`:'HR clears them before the first real month.'}</div>`;
-  if(ui.kt==='bu')h+=kBu(X);else if(ui.kt==='team')h+=kTeam(X);else if(ui.kt==='ind')h+=kInd(X);else h+=kRules();
+  if(ui.kt==='bu')h+=kBu(X);else if(ui.kt==='team')h+=kTeam(X);else if(ui.kt==='ind')h+=kInd(X);else if(ui.kt==='s1')h+=kS1(X);else h+=kRules();
   return h;
 }
 function kBu(X){
@@ -924,12 +934,14 @@ function kTeam(X){
   h+=`<div class="card"><h3>S4 · ${esc(d.label)}</h3><div class="row"><label class="f">${d.kind==='pct'?'Result (%)':'Result'}${d.unit?' · '+esc(d.unit):''}<input type="number" step="any" data-ch="ks4" data-t="${t}" value="${b.s4v==null?'':d.kind==='pct'?+(b.s4v*100).toFixed(1):b.s4v}" ${canS4?'':'disabled'}></label>
    <span>Target <b>${esc(s4fmt(t,d.target))}</b> · ${d.dir==='lower'?'lower is better':'higher is better'}</span>${b.S4==null?pill('No data'):pill('Achievement '+pc(b.S4),b.S4>=1?'good':b.S4>=.9?'warn':'bad')}</div></div>`;
   h+=`<div class="card"><h3>${esc(TEAMS[t].full)} · services (${b.n})</h3><p class="small muted">Enter three numbers per service each month: cases closed, closed within TAT, closed first-time-right. Log by the 3rd working day.</p>`+
-   table([['Service'],['Goal'],['TAT'],['Owner'],['Closed','r'],['Within TAT','r'],['First-time-right','r'],['I1','r'],['I2','r']],
-   SVC.filter(s=>s.team===t).map(s=>{const l=K.logs[s.id],ok=canLog(s),ow=K.owner[s.id];
-     const inp=f=>`<td class="r"><input type="number" min="0" step="1" value="${l?l[f]:''}" data-ch="klog" data-id="${s.id}" data-f="${f}" ${ok?'':'disabled'} aria-label="${f} for ${esc(s.name)}"></td>`;
+   table([['Service'],['Goal'],['TAT'],['Owner'],['Closed','r'],['Within TAT','r'],['First-time-right','r'],['Late, caused by others','r'],['I1','r'],['I2','r']],
+   SVC.filter(s=>s.team===t).map(s=>{const l=K.logs[s.id],ow=K.owner[s.id],names=ownNames(s),keys=names.length?names:['_'],ol=(K.olog&&K.olog[s.id])||{};
+     const own2=(K.own2&&K.own2[s.id])||[];
+     const cell=f=>`<td class="r">${keys.map(n=>{const ok=canLogO(s,n),e=ol[n]||(keys.length===1&&!Object.keys(ol).length&&l?{closed:l.closed,ontime:l.ontime,ftr:l.ftr,ext:0}:null),aff=(own2.find(o=>o.n===n)||{a:[]}).a.filter(x=>x!=='ALL').join(', ');
+       return `<div style="margin-bottom:4px">${keys.length>1?`<div class="small muted">${esc(n)}${aff?' · '+esc(aff):''}</div>`:''}<input type="number" min="0" step="1" value="${e&&e[f]!=null?e[f]:''}" data-ch="kolog" data-id="${s.id}" data-o="${esc(n)}" data-f="${f}" ${ok?'':'disabled'} aria-label="${f} for ${esc(s.name)} ${esc(n)}"></div>`}).join('')}</td>`;
      return `<tr><td class="wrap"><b>${esc(s.name)}</b></td><td>${s.goal}</td><td class="wrap small">${esc(s.tat)} ${s.prop?pill('proposed','warn'):''}</td>
      <td class="wrap">${ow?esc(ownTxt(s.id,ow))+(canClaim(s)?` <button class="btn sm" data-act="kunown" data-id="${s.id}" aria-label="Clear owner">×</button>`:''):(canClaim(s)?`<button class="btn sm" data-act="kclaim" data-id="${s.id}">Make me owner</button>`:'<span class="muted">No owner yet</span>')}</td>
-     ${inp('closed')}${inp('ontime')}${inp('ftr')}<td class="r mono">${l&&l.closed?pc(l.ontime/l.closed):'–'}</td><td class="r mono">${l&&l.closed?pc(l.ftr/l.closed):'–'}</td></tr>`}))+`</div>`;
+     ${cell('closed')}${cell('ontime')}${cell('ftr')}${cell('ext')}<td class="r mono">${l&&l.closed?pc(l.ontime/l.closed):'–'}</td><td class="r mono">${l&&l.closed?pc(l.ftr/l.closed):'–'}</td></tr>`}))+`<p class="small muted">Each owner enters only their own line. "Late, caused by others" counts cases that missed TAT because an insurer, approver or another department held them. They are scored as on time, but the count shows here and in Section 1 for the supervisor to check.</p></div>`;
   return h;
 }
 function kInd(X){
@@ -941,6 +953,28 @@ function kInd(X){
   const my=SVC.filter(s=>K.owner[s.id]===mine);
   if(my.length)h+=`<div class="card"><h3>My services</h3>${table([['Service'],['Team'],['I1','r'],['I2','r']],my.map(s=>{const l=K.logs[s.id];return `<tr><td class="wrap">${esc(s.name)}</td><td>${s.team}</td><td class="r">${l&&l.closed?pc(l.ontime/l.closed):'–'}</td><td class="r">${l&&l.closed?pc(l.ftr/l.closed):'–'}</td></tr>`}))}</div>`;
   return h;
+}
+function kS1(X){
+  const K=db.kpi,mine=pname(),minv=MINV(),w1=+K.w.S1||0,w2=+K.w.S2||0,ws=(w1+w2)||1;
+  const owners=Object.keys(X.O).filter(o=>has('hr','chro')||(myTeam()&&X.O[o].teams[myTeam()])||fnm(o)===fnm(mine));
+  const csv=[['Owner','Goal','Closed','On time (incl. late by others)','Right first time','I1','I2','Achievement','Rating 1-5']];
+  let body='';
+  owners.forEach(o=>{const x=X.O[o],g=x.g||{};let sw=0,sr=0;
+    Object.keys(GOALS).forEach(k=>{const e=g[k];if(!e)return;
+      const ok=e.closed>=minv,i1=e.closed?e.ontime/e.closed:null,i2=e.closed?e.ftr/e.closed:null,a=ok?(w1*ach(i1,KT.I1)+w2*ach(i2,KT.I2))/ws:null,r=ok?rate5(a):null;
+      if(ok){sw+=e.closed;sr+=e.closed*r}
+      body+=`<tr><td>${esc(o)}${fnm(o)===fnm(mine)?' '+pill('you','good'):''}</td><td class="wrap"><b>${k}</b> ${esc(GOALS[k])}</td><td class="r">${e.closed}</td><td class="r">${ragp(i1,KT.I1)}</td><td class="r">${ragp(i2,KT.I2)}</td><td class="r">${ok?pc(a):'–'}</td><td class="r">${ok?`<b>${r}</b>`:pill('Under '+minv+' closed','warn')}</td></tr>`;
+      csv.push([o,k,e.closed,e.ontime,e.ftr,i1==null?'':(i1*100).toFixed(1)+'%',i2==null?'':(i2*100).toFixed(1)+'%',ok?(a*100).toFixed(1)+'%':'',ok?r:'Not enough volume']);});
+    const unr=Object.keys(GOALS).filter(k=>!g[k]);
+    body+=`<tr><td><b>${esc(o)}</b></td><td class="wrap"><b>Section 1 overall</b> <span class="small muted">no services on: ${unr.length?unr.join(', '):'none'} (N/A, not zero)</span></td><td></td><td></td><td></td><td></td><td class="r mono"><b>${sw?(sr/sw).toFixed(2):'–'}</b></td></tr>`;
+    csv.push([o,'Section 1 overall','','','','','','',sw?(sr/sw).toFixed(2):'']);});
+  const lines=csv.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  return `<div class="card"><h3>Section 1 · the four goals, rated from the services each person handled</h3>
+   <p class="small muted">Per goal: on-time (I1, target 95%) and first-time-right (I2, target 98%), blended at the S1:S2 weights, then banded 5 at 100% or more, 4 at 95–99%, 3 at 90–94%, 2 at 80–89%, 1 below 80%. Overall is the closed-volume weighted average of rated goals. A goal with no services is N/A. Under ${minv} closed cases is not rated.</p>
+   ${has('hr','chro')?`<div class="row" style="margin-bottom:8px"><label class="f">Minimum closed cases to rate<input type="number" min="1" value="${minv}" data-ch="kminv"></label></div>`:''}
+   ${table([['Owner'],['Goal'],['Closed','r'],['I1','r'],['I2','r'],['Achievement','r'],['Rating','r']],[body])}
+   <div class="row" style="margin-top:10px"><button class="btn primary" data-act="copy" data-id="s1csv">Copy Section 1 (CSV)</button></div><pre id="s1csv" style="display:none">${esc(lines)}</pre>
+   <p class="small muted">This is evidence for the appraisal conversation, not the rating itself. Check late-by-others counts and volume before using a number.</p></div>`;
 }
 function kRules(){
   const K=db.kpi,R=[['Individual','I1','On-time rate','Cases closed within the service TAT ÷ cases closed','95%','S1'],['Individual','I2','First-time-right rate','Closed with no rework, return or correction ÷ cases closed','98%','S2'],['Individual','I3','TAT agreed','Services the owner holds with an agreed (not proposed) TAT ÷ services owned. A service without a TAT carries I3 in place of I1 until its TAT is written and approved.','100% by 31 Dec 2026','S3'],
@@ -1585,7 +1619,7 @@ const A={
  kteam:d=>{ui.kteam=d.id;render()},
  kclaim:d=>{const s=SVC.find(x=>x.id===d.id);if(!canClaim(s))return;db.kpi.owner[d.id]=pname();log('HR KPI',pname()+' claimed '+s.name);save();render()},
  kunown:d=>{const s=SVC.find(x=>x.id===d.id);if(!canClaim(s))return;delete db.kpi.owner[d.id];log('HR KPI','Cleared owner of '+s.name);save();render()},
- kclear:()=>{db.kpi.logs={};db.kpi.owner={};db.kpi.s4={};db.kpi.b4=null;db.kpi.sample=false;log('HR KPI','Cleared sample data');save();toast('Sample data cleared. Ready for real logs.')},
+ kclear:()=>{db.kpi.logs={};db.kpi.olog={};db.kpi.owner={};db.kpi.s4={};db.kpi.b4=null;db.kpi.sample=false;log('HR KPI','Cleared sample data');save();toast('Sample data cleared. Ready for real logs.')},
  tab:d=>{ui.tab=d.id;render()},
  closemodal:()=>{ui.modal=null;render()},
  reqsel:d=>{ui.reqSel=d.id;render()},
@@ -1686,7 +1720,13 @@ const C={
  klog:(v,d)=>{const sv=SVC.find(x=>x.id===d.id);if(!canLog(sv))return;const l=db.kpi.logs[d.id]||(db.kpi.logs[d.id]={closed:0,ontime:0,ftr:0});
    l[d.f]=Math.max(0,Math.floor(+v||0));if(d.f==='closed'){l.ontime=Math.min(l.ontime,l.closed);l.ftr=Math.min(l.ftr,l.closed)}else l[d.f]=Math.min(l[d.f],l.closed);
    log('HR KPI',sv.name+': '+l.closed+' closed, '+l.ontime+' on time, '+l.ftr+' first-time-right');save();render()},
+ kolog:(v,d)=>{const sv=SVC.find(x=>x.id===d.id);if(!canLogO(sv,d.o))return;const K=db.kpi;K.olog=K.olog||{};const o=K.olog[d.id]||(K.olog[d.id]={});
+   if(!o[d.o]){const l=K.logs[d.id],single=!Object.keys(o).length&&l&&ownNames(sv).length<=1;o[d.o]=single?{closed:l.closed,ontime:l.ontime,ftr:l.ftr,ext:0}:{closed:0,ontime:0,ftr:0,ext:0}}
+   const e=o[d.o];e[d.f]=Math.max(0,Math.floor(+v||0));if(d.f==='closed'){e.ontime=Math.min(e.ontime,e.closed);e.ftr=Math.min(e.ftr,e.closed);e.ext=Math.min(e.ext||0,e.closed)}else e[d.f]=Math.min(e[d.f],e.closed);
+   if((d.f==='ontime'||d.f==='ext')&&e.ontime+(e.ext||0)>e.closed){if(d.f==='ext')e.ext=e.closed-e.ontime;else e.ext=e.closed-e.ontime}
+   resum(d.id);log('HR KPI',sv.name+(d.o!=='_'?' ['+d.o+']':'')+': '+e.closed+' closed, '+e.ontime+' on time, '+e.ftr+' first-time-right, '+(e.ext||0)+' late by others');save();render()},
  ks4:(v,d)=>{if(!(has('hr','chro')||(has('hrsup')&&me().team===d.t)))return;const k=TEAMS[d.t].s4.kind;db.kpi.s4[d.t]=v===''?null:(k==='pct'?+v/100:+v);log('HR KPI','S4 for '+d.t+' set to '+v);save();render()},
+ kminv:v=>{if(!has('hr','chro'))return;db.kpi.minv=Math.max(1,Math.floor(+v||10));save();render()},
  kw:(v,d)=>{db.kpi.w[d.k]=Math.max(0,+v||0);save();render()},
  ktw:(v,d)=>{db.kpi.tw[d.k]=Math.max(0,+v||0);save();render()},
  kb4:v=>{db.kpi.b4=v===''?null:Math.min(5,Math.max(1,+v));log('HR KPI','B4 satisfaction set to '+v);save();render()},
