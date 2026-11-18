@@ -709,6 +709,28 @@ function liveLinks(){
    ['Hiring → Budget',(()=>{const X=bcalc();return COS.filter(c=>X[c].hc.act+X[c].hc.open>X[c].hc.plan).length})(),'companies whose open requisitions would pass the approved headcount'],
    ['Hiring → Employee master',offers,'offers out; each hire creates the record, payroll entry and onboarding courses']];
 }
+/* Bubble diagram: bubble area follows the figure (bigger figure, bigger bubble) */
+function bubbleSvg(items,COL){
+  const num=s=>{const m=String(s).replace(/,/g,'').match(/-?\d+(\.\d+)?/);return m?Math.abs(parseFloat(m[0])):null};
+  const B=[],skip=[];items.forEach((t,i)=>{const v=num(t[0]);if(v==null||/[A-Za-z]{3}/.test(String(t[0])))skip.push(t);else B.push({v,txt:String(t[0]),lab:String(t[1]),c:COL[(i+4)%6]})});
+  if(!B.length)return '';
+  const vmax=Math.max(...B.map(b=>b.v),1),RMIN=30,RMAX=92;
+  B.forEach(b=>{b.r=RMIN+(RMAX-RMIN)*Math.sqrt(b.v/vmax)});
+  B.sort((a,b)=>b.r-a.r);
+  const placed=[];
+  B.forEach((b,k)=>{const cr=b.r+20;
+    if(!k){b.x=0;b.y=0;placed.push(b);return}
+    for(let a=0,s=0;;a+=.35,s+=1){const rad=6+a*5.2,x=rad*Math.cos(a),y=rad*Math.sin(a)*.8;
+      if(placed.every(p=>Math.hypot(p.x-x,p.y-y)>=cr+p.r+20-6)){b.x=x;b.y=y;placed.push(b);return}}});
+  const x0=Math.min(...B.map(b=>b.x-b.r))-8,x1=Math.max(...B.map(b=>b.x+b.r))+8,y0=Math.min(...B.map(b=>b.y-b.r))-8,y1=Math.max(...B.map(b=>b.y+b.r+32))+4;
+  const lab=s=>{const w=s.split(' '),l=[''];w.forEach(x=>{if((l[l.length-1]+' '+x).trim().length>20)l.push(x);else l[l.length-1]=(l[l.length-1]+' '+x).trim()});return l.slice(0,2)};
+  return `<svg viewBox="${x0.toFixed(0)} ${y0.toFixed(0)} ${(x1-x0).toFixed(0)} ${(y1-y0).toFixed(0)}" width="100%" role="img" aria-label="Bubble diagram: each bubble's size follows its figure" style="max-width:760px;display:block;margin:0 auto">`+
+   B.map(b=>`<g><title>${esc(b.lab)}: ${esc(b.txt)}</title><circle cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="${b.r.toFixed(1)}" fill="${b.c}" fill-opacity=".2" stroke="${b.c}" stroke-width="2"/>
+    <text x="${b.x.toFixed(1)}" y="${(b.y+6).toFixed(1)}" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-weight="600" font-size="${Math.max(15,Math.min(30,b.r*.42)).toFixed(0)}" fill="#FEF9F3">${esc(b.txt)}</text>
+    ${lab(b.lab).map((l,i)=>`<text x="${b.x.toFixed(1)}" y="${(b.y+b.r+14+i*13).toFixed(1)}" text-anchor="middle" font-size="11.5" fill="#B9C3DE">${esc(l)}</text>`).join('')}</g>`).join('')+`</svg>`+
+   (skip.length?`<p class="small" style="color:#B9C3DE;margin:10px 0 0;text-align:center">${skip.map(t=>esc(t[1])+': <b style="color:#FEF9F3">'+esc(t[0])+'</b>').join(' · ')}</p>`:'')+
+   `<p class="small" style="color:#7C87AA;margin:8px 0 0;text-align:center">Bubble size follows the figure. Counts, percentages and scores share one scale, so read each bubble by its label.</p>`;
+}
 function viewDash(){
   const act=db.emps.filter(e=>e.active!==false&&onPay(e));
   const enr=db.enr.length,dn=db.enr.filter(e=>e.done).length;
@@ -735,7 +757,7 @@ function viewDash(){
   return `<section class="hero"><div class="hero-k">${esc(TODAY.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'}))}</div><h2>${gr}, ${esc(fn)}.</h2><p>${BLURB.dash[1]}</p></section>
   <div class="goalhd">The four goals every module serves · Q3 2027</div>
   <section class="ribbon">${big.map((t,i)=>`<div class="stat"><i style="background:${COL[i]}"></i><div class="gk">${t[0]}</div><div class="gn">${esc(GOALS[t[0]])}</div><div class="n">${esc(t[1])}</div><div class="l">${esc(t[2])}</div><div class="fd">${esc(t[3])}</div></div>`).join('')}</section>
-  <section class="glass"><h3>Also on your radar</h3><div class="radar">${rest.map((t,i)=>`<div class="rd"><b style="color:${COL[(i+4)%6]}">${esc(t[0])}</b><span>${esc(t[1])}</span></div>`).join('')}</div></section>
+  <section class="glass"><h3>Also on your radar</h3>${bubbleSvg(rest,COL)}</section>
   <section class="glass"><h3>How the modules talk to each other</h3><ol class="flow">${liveLinks().map((l,i)=>`<li style="--c:${COL[i%6]}"><div class="from">${esc(l[0])}</div><div class="what"><b>${l[1]}</b> <span>${esc(l[2])}</span></div></li>`).join('')}</ol></section>
   <p class="foot" style="text-align:left;padding:8px 4px">Switch persona (top right) to see access change. Payroll cannot open discipline; Labor Relations cannot see payroll runs. Every change is written to the audit log.</p>`;
 }
