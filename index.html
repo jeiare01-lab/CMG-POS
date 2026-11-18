@@ -485,15 +485,16 @@ function personas(){
   return adm.concat(Object.keys(db.roles||{}).filter(id=>db.emps.some(e=>e.id===id)).map(id=>({id:'p-'+id,label:ROLEL[db.roles[id]]+' · '+db.emps.find(e=>e.id===id).name,role:db.roles[id],emp:id,team:(db.rteam||{})[id]})));
 }
 
-const ALL=['dash','gl','pay','sal','bud','scm','pm','ats','lms','perf','eng','csr','tr','ess','lr','kpi','audit'];
+const ALL=['dash','gl','pay','sal','bud','scm','pm','ats','lms','perf','eng','csr','tr','ess','lr','kpi','succ','audit'];
 const ACCESS={employee:['dash','pm','ess','lms','perf','eng','csr','tr'],supervisor:['dash','scm','pm','ess','lms','perf','eng','csr','tr'],hr:ALL,hrsup:['dash','kpi','ess','lms','perf','eng','csr','tr'],payroll:['dash','pay','ess'],lr:['dash','lr','ess'],proc:['dash','scm','pm','bud','ess'],wh:['dash','scm','ess'],opshead:['dash','scm','pm','ess'],cfo:['dash','scm','pm','bud','pay','ess'],chro:ALL,admin:[...ALL,'adm']};
-const NAV={sal:'Salary structure',dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',audit:'Audit log',adm:'Admin tools'};
+const NAV={sal:'Salary structure',dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',succ:'Succession',audit:'Audit log',adm:'Admin tools'};
 const BLURB={
  sal:['Salary structure','Where every rank sits against the approved CMG structure, and what closing the gap costs. Basic pay only: allowances and benefits are not in the structure or in this view.'],
  adm:['Admin tools','Add and remove what each tab offers: courses, Rocks, warehouses, grade bands, offenses and department budgets. Administrator only.'],
  dash:['Overview','Where the nine modules touch each other right now.'],
  pay:['Timekeeping & Payroll','Attendance in, payslips out. Statutory deductions, loans and disciplinary deductions land here automatically.'],
  ats:['Hiring','Requisition to hire. The offer is blocked until the candidate clears GWC. A hire creates the employee record, payroll entry and onboarding courses.'],
+ succ:['Succession plan','Who steps into each supervisor and manager seat, how ready they are, and the development plan that closes the gap. Goal G2.'],
  lms:['Learning','Courses, progress and Career Lattice readiness. Finishing a course can unlock the next layer.'],
  perf:['Performance','Company Rocks cascade to individual Rocks. Appraisal results feed Total Rewards.'],
  eng:['Engagement','Events, pulse and shout-outs.'],
@@ -782,7 +783,7 @@ function viewDash(){
   let fcv='';if(has('hr','chro','payroll')){const X=bcalc(),f=COS.reduce((a,c)=>a+X[c].tot.fc,0),b=COS.reduce((a,c)=>a+X[c].tot.bud,0);fcv=b>0?' · forecast '+(f>b?'+':'')+Math.round((f-b)/b*100)+'% vs budget':' · no budget loaded yet'}
   const gr_=g=>KG[g].closed?pc(KG[g].ontime/KG[g].closed)+' HR services on time':'HR services: no logs yet';
   const big=[['G1',money(unb),'earned, not yet billed'+fcv,'Budget · Projects · Supply Chain'],
-   ['G2',Math.round(dn/Math.max(1,enr)*100)+'%','training completion feeding readiness','Learning · Performance · Rewards'],
+   ['G2',(()=>{const q=succStats();return q.mn?q.mPct+'%':'–'})(),'mid-level seats with a ready-now successor','Succession · Learning · Performance'],
    ['G3',(()=>{const b=has('hr','chro','hrsup')?kcalc().B.B1:KG.G3.closed?KG.G3.ontime/KG.G3.closed:null;return pc(b)})(),'HR services delivered on time','KPI Cascade · Payroll · Projects'],
    ['G4',acc+' / '+S().vendors.length,'vendors accredited','Supply Chain · Hiring · Projects']];
   return `<section class="hero"><div class="hero-k">${esc(TODAY.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'}))}</div><h2>${gr}, ${esc(fn)}.</h2><p>${BLURB.dash[1]}</p></section>
@@ -832,6 +833,55 @@ function viewAts(){
   if(edit)h+=`<div class="card" style="margin-top:12px"><h3>Add candidate</h3><div class="form"><label class="f">Name<input id="an" placeholder="Full name"></label><label class="f">Expected salary<input id="as" type="number" value="35000" style="width:110px"></label><label class="f">Source<select id="asrc">${opts(['Job portal','Referral','Walk-in','Social media'])}</select></label><button class="btn primary" data-act="addcand">Add to ${esc(rq.id)}</button></div></div>`;
   h+=rform;
   h+=`<div class="note">Gate: nobody moves to Offer unless Get it, Want it and Capacity are all marked. If a hiring manager pushes to skip it, that is a conversation, not a setting.</div>`;
+  return h;
+}
+
+/* Succession Plan in Place (goal G2). Seats = CMG people at JG10-15 (supervisors JG10-12, mid-level managers JG13-15).
+   db.succ[seatId] = [{id:successorEmpId, ready:'now'|'12'|'3', idp:'none'|'draft'|'active'|'done'}] */
+const gn=e=>+String(e.grade||'').replace(/\D/g,'')||0;
+const READY={now:'Ready now','12':'1-2 years','3':'3+ years'},IDPL={none:'No IDP',draft:'IDP drafted',active:'IDP running',done:'IDP done'};
+function succSeats(){return db.emps.filter(e=>e.active!==false&&onPay(e)&&gn(e)>=10&&gn(e)<=15)}
+function succRows(){
+  db.succ=db.succ||{};
+  const seats=succSeats(),ids=new Set(seats.map(s=>s.id)),use={};
+  seats.forEach(s=>(db.succ[s.id]||[]).forEach(x=>{use[x.id]=(use[x.id]||0)+1}));
+  return seats.map(s=>{
+    const list=(db.succ[s.id]||[]).filter(x=>{const c=emp(x.id);return c&&c.active!==false&&c.id!==s.id});
+    const mgrSeat=gn(s)>=13,now=list.some(x=>x.ready==='now'),near=list.some(x=>x.ready==='12');
+    const st=!list.length?'gap':now?'ready':near?'bench':'thin';
+    const flags=[];
+    list.forEach(x=>{const c=emp(x.id);if(gn(c)>=gn(s))flags.push(c.name+' is not below this seat');if(x.ready!=='now'&&x.idp==='none')flags.push(c.name+' has no IDP');if(use[x.id]>1)flags.push(c.name+' is named for '+use[x.id]+' seats')});
+    return {s,list,mgrSeat,st,flags,dep:list.filter(x=>use[x.id]>1).length};
+  });
+}
+function succStats(){
+  const R=succRows(),M=R.filter(r=>r.mgrSeat),pct=(a,b)=>b?Math.round(a/b*100):0;
+  return {R,M,seats:R.length,mn:M.length,mCov:M.filter(r=>r.list.length).length,mReady:M.filter(r=>r.st==='ready').length,
+   cov:R.filter(r=>r.list.length).length,ready:R.filter(r=>r.st==='ready').length,
+   noIdp:R.reduce((t,r)=>t+r.list.filter(x=>x.ready!=='now'&&x.idp==='none').length,0),dep:R.reduce((t,r)=>t+r.dep,0),
+   mPct:pct(M.filter(r=>r.st==='ready').length,M.length),pct};
+}
+function viewSucc(){
+  const S_=succStats(),edit=has('hr','chro');ui.sf=ui.sf||'gap';ui.sc=ui.sc||'ALL';
+  let h=head('succ');
+  const T=[[S_.mn?S_.pct(S_.mCov,S_.mn)+'%':'–','Mid-level seats (JG13-15) with a named successor','of '+S_.mn],[S_.mn?S_.mPct+'%':'–','Mid-level seats with a ready-now successor',S_.mReady+' of '+S_.mn],[S_.seats?S_.pct(S_.cov,S_.seats)+'%':'–','All seats (JG10-15) with a successor',S_.cov+' of '+S_.seats],[S_.noIdp,'Successors not ready and no IDP yet',''],[S_.dep,'Successor slots held by someone named on 2+ seats','']];
+  h+=`<section class="tiles">${T.map(t=>`<div class="tile"><div class="n">${esc(t[0])}</div><div class="l">${esc(t[1])}</div>${t[2]?`<div class="small muted">${esc(t[2])}</div>`:''}</div>`).join('')}</section>`;
+  if(S_.mn&&S_.mReady<S_.mn)h+=`<div class="note"><b>Read this first, James.</b> ${S_.mn-S_.mCov} of ${S_.mn} mid-level seats have nobody named and only ${S_.mReady} have someone ready now. The Rock says approved by Q3 2027: a plan with empty seats will not survive exec scrutiny. Name people before polishing anything else.</div>`;
+  const cos=['ALL',...COS],fl=[['gap','Gaps first'],['mgr','Mid-level only'],['all','All seats']];
+  h+=`<div class="row" style="margin:10px 0;flex-wrap:wrap">${cos.map(c=>`<button class="btn sm ${ui.sc===c?'primary':''}" data-act="succc" data-id="${c}">${c==='ALL'?'All CMG':c}</button>`).join('')}<span style="flex:1"></span>${fl.map(f=>`<button class="btn sm ${ui.sf===f[0]?'primary':''}" data-act="succf" data-id="${f[0]}">${f[1]}</button>`).join('')}</div>`;
+  const ord={gap:0,thin:1,bench:2,ready:3};
+  let rows=S_.R.filter(r=>ui.sc==='ALL'||r.s.sbu===ui.sc).filter(r=>ui.sf!=='mgr'||r.mgrSeat);
+  rows.sort((a,b)=>ui.sf==='all'?a.s.name.localeCompare(b.s.name):(ord[a.st]-ord[b.st])||(b.mgrSeat-a.mgrSeat)||a.s.name.localeCompare(b.s.name));
+  const PK={gap:['No successor','bad'],thin:['Thin: nobody under 3 years','warn'],bench:['Bench in 1-2 years','warn'],ready:['Ready now','good']};
+  h+=rows.map(r=>{
+    const s=r.s,pool=db.emps.filter(c=>c.active!==false&&c.sbu===s.sbu&&gn(c)>=5&&gn(c)<gn(s)&&!r.list.some(x=>x.id===c.id)).sort((a,b)=>((b.mgr===s.id)-(a.mgr===s.id))||((b.dept===s.dept)-(a.dept===s.dept))||gn(b)-gn(a)||a.name.localeCompare(b.name));
+    const men=emp(s.mgr);
+    return `<div class="card"><div class="row" style="justify-content:space-between;gap:8px"><div><b>${esc(s.name)}</b> <span class="small muted">${esc(s.title)} · JG${gn(s)} · ${esc(s.sbu)} · ${esc(s.dept)}${men?' · reports to '+esc(men.name):''}</span></div>${pill(PK[r.st][0],PK[r.st][1])}</div>
+    ${r.list.map(x=>{const c=emp(x.id);return `<div class="row" style="gap:6px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line)"><div style="flex:1;min-width:150px"><b>${esc(c.name)}</b><div class="small muted">${esc(c.title)} · JG${gn(c)}</div></div>
+      ${edit?`<select data-ch="sready" data-seat="${esc(s.id)}" data-id="${esc(x.id)}" aria-label="Readiness">${opts(Object.entries(READY),x.ready)}</select><select data-ch="sidp" data-seat="${esc(s.id)}" data-id="${esc(x.id)}" aria-label="IDP status">${opts(Object.entries(IDPL),x.idp)}</select><button class="btn sm danger" data-act="succdel" data-seat="${esc(s.id)}" data-id="${esc(x.id)}">Remove</button>`:`${pill(READY[x.ready],x.ready==='now'?'good':'warn')} ${pill(IDPL[x.idp],x.idp==='none'&&x.ready!=='now'?'bad':'')}`}</div>`}).join('')}
+    ${edit&&r.list.length<3?`<div class="row" style="padding-top:8px;border-top:1px solid var(--line)"><select data-ch="succadd" data-seat="${esc(s.id)}" aria-label="Name a successor"><option value="">+ Name a successor (${pool.length} eligible)</option>${pool.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} · JG${gn(c)}${c.mgr===s.id?' · reports to seat':c.dept===s.dept?' · same dept':''}</option>`).join('')}</select></div>`:''}
+    ${r.flags.length?`<div class="small" style="margin-top:6px;color:var(--warn,#b45309)">${r.flags.map(esc).join(' · ')}</div>`:''}</div>`}).join('')||`<div class="card muted">No seats in this view.</div>`;
+  h+=`<div class="note">Seats are CMG people at JG10-15 on the current org file. Up to 3 successors per seat. Candidates must sit below the seat and at JG5 or higher. Lattice layers in the database are all still L1, so readiness here is your call, not computed. Fill the layers before leaning on the Learning readiness view.</div>`;
   return h;
 }
 
@@ -1681,7 +1731,7 @@ function scopeCard(tab){
   const sw=`<div class="row" style="margin-bottom:8px"><span class="small muted" style="margin-right:6px">View by</span>${[['BA','BA · company'],['BU','BU · department'],['FG','FG · section']].map(([k,n])=>`<button class="btn sm ${V===k?'primary':''}" data-act="bview" data-id="${k}">${n}</button>`).join('')}</div>`;
   return `<div class="card" style="margin-bottom:12px"><h3>By ${V==='BA'?'company (BA)':V==='BU'?'department (BU)':'section (FG)'}</h3>${sw}${rows.length?table([[V==='BA'?'BA':V==='BU'?'BA › BU':'BA › BU › FG'],...cols.map(c=>[c,'r'])],rows.map(g=>`<tr><td class="wrap">${esc(g.k)}</td>${cols.map((_,i)=>`<td class="r">${cell(g,i)}</td>`).join('')}</tr>`).concat([`<tr><td><b>Total</b></td>${cols.map((_,i)=>`<td class="r"><b>${fm[i]==='avg'?'':fm[i]==='$'?esc(money(tot[i])):Math.round(tot[i]*10)/10}</b></td>`).join('')}</tr>`])):'<p class="muted small">Nothing to group yet.</p>'}${minN?'<p class="small muted">Pulse results show only for groups of '+minN+' or more responses, so nobody can be picked out.</p>':''}</div>`;
 }
-const VIEWS={sal:viewSal,gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
+const VIEWS={sal:viewSal,gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,succ:viewSucc,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
 function render(){
   const y=window.scrollY,allowed=ACCESS[role()];
   if(!allowed.includes(ui.tab))ui.tab='dash';
@@ -1836,6 +1886,9 @@ const A={
  bclear:()=>{db.bud.manual=db.bud.manual.filter(m=>!m.base);db.bud.sample=false;log('Budget','Cleared sample actuals');save();toast('Sample actuals cleared. Budgets stay until you set the real ones.')},
  addspend:()=>{const a=+$('#sa').value;if(!(a>0)){toast('Enter an amount');return}db.bud.manual.push({id:'m'+Date.now(),co:$('#sc').value,line:$('#sl').value,amt:a,note:$('#sn').value||'-',ts:todayS(),by:pname()});log('Budget','Logged '+peso(a)+' to '+$('#sc').value+' · '+$('#sl').value);save();render()},
 
+ succc:d=>{ui.sc=d.id;render()},
+ succf:d=>{ui.sf=d.id;render()},
+ succdel:d=>{if(!has('hr','chro'))return;db.succ=db.succ||{};db.succ[d.seat]=(db.succ[d.seat]||[]).filter(x=>x.id!==d.id);log('Succession','Removed successor '+(emp(d.id)||{}).name+' from '+(emp(d.seat)||{}).name);save();render()},
  ktab:d=>{ui.kt=d.id;render()},
  kteam:d=>{ui.kteam=d.id;render()},
  kmadd:d=>{const sv=SVC.find(x=>x.id===d.id);if(!sv||!canLog(sv))return;const K=db.kpi;K.mile=K.mile||{};const a=K.mile[d.id]||(K.mile[d.id]=[]);const nm=ownNames(sv),me1=nm.find(n=>isOwnerOf(sv,n));
@@ -1959,6 +2012,9 @@ const C={
  persona:v=>{ui.persona=v;ui.tr=null;render()},
  att:(v,d)=>{db.att[d.id][d.f]=Math.max(0,+v||0);save();render()},
  rock:(v,d)=>{db.rocks.find(r=>r.id===d.id).pct=Math.max(0,Math.min(100,+v||0));save();render()},
+ succadd:(v,d)=>{if(!v||!has('hr','chro'))return;db.succ=db.succ||{};const l=db.succ[d.seat]=db.succ[d.seat]||[];if(l.length>=3||l.some(x=>x.id===v))return;l.push({id:v,ready:'3',idp:'none'});log('Succession','Named '+(emp(v)||{}).name+' successor for '+(emp(d.seat)||{}).name);save();render()},
+ sready:(v,d)=>{const x=((db.succ||{})[d.seat]||[]).find(x=>x.id===d.id);if(!x||!has('hr','chro'))return;x.ready=v;save();render()},
+ sidp:(v,d)=>{const x=((db.succ||{})[d.seat]||[]).find(x=>x.id===d.id);if(!x||!has('hr','chro'))return;x.idp=v;save();render()},
  kpi:(v,d)=>{db.appr[d.id].kpi=+v;save();render()},
  vals:(v,d)=>{db.appr[d.id].values=+v;save();render()},
  idp:(v,d)=>{db.appr[d.id].idp=v;save()},
