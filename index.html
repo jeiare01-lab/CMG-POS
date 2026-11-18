@@ -851,6 +851,17 @@ function viewLms(){
   return h+'</div>';
 }
 
+/* Appraisal routing: evaluator (immediate supervisor) scores, then head (1st approver), then department manager (2nd approver).
+   Skips empty steps and the same person twice in a row. No reporting line on file: falls back to the employee's manager. */
+function apprSteps(e){
+  const r=window.APPR&&window.APPR[e.id];let raw=r?[['Evaluator',r.ev],['1st approver',r.a1],['2nd approver',r.a2]]:[['Evaluator',e.mgr]];
+  const out=[];raw.forEach(([lbl,id])=>{if(id&&id!==e.id&&(!out.length||out[out.length-1].id!==id)&&db.emps.some(x=>x.id===id))out.push({lbl:out.length?lbl:'Evaluator',id})});
+  return out;
+}
+function apprActor(e){
+  const a=db.appr[e.id],st=apprSteps(e),i=a.status==='review'?(a.step||1):0,cur=st[i]||null,admin=has('hr','chro');
+  return {st,i,cur,mine:!!cur&&cur.id===me().emp,admin};
+}
 function apprCalc(e){
   const a=db.appr[e.id],rs=db.rocks.filter(r=>r.empId===e.id),avg=rs.length?rs.reduce((s,r)=>s+r.pct,0)/rs.length:0;
   const rocks=r2(1+4*avg/100),vals=e.flags.length?Math.min(a.values,3):a.values;
@@ -859,20 +870,25 @@ function apprCalc(e){
   const merit=fin>=4.5?8:fin>=3.5?5:fin>=2.5?3:0;
   return {rocks,vals,fin,rating,merit,capped:e.flags.length&&a.values>3};
 }
+function apFinal(id){const e=emp(id),a=db.appr[id],c=apprCalc(e);a.status='final';a.vals=c.vals;a.step=0;
+  if(c.merit>0){const to=Math.round(e.salary*(1+c.merit/100));db.props.push({id:'pr'+Date.now(),empId:e.id,rating:c.rating,from:e.salary,to,pct:c.merit,status:'Pending'})}
+  log('Performance','Finalized '+e.name+': '+c.fin.toFixed(2)+' '+c.rating+(c.merit?', merit proposal '+c.merit+'%':''));save();toast(c.merit?'Finalized. Merit proposal sent to Total Rewards.':'Finalized.')}
 function viewPerf(){
   let h=head('perf');
   h+=`<div class="card"><h3>Company Rocks · Q4 2026</h3>${db.crocks.map(c=>{const kids=db.rocks.filter(r=>r.parent===c.id),avg=kids.length?kids.reduce((s,r)=>s+r.pct,0)/kids.length:0;return `<div style="margin-bottom:8px"><div class="row"><b>${esc(c.title)}</b><span class="small muted">${kids.length} cascaded Rocks</span></div>${bar(avg)}</div>`}).join('')}</div>`;
-  const sc=scope().filter(e=>e.active!==false);
+  const sc=(has('hr','chro','payroll','lr')?db.emps:db.emps.filter(e=>e.id===me().emp||apprSteps(e).some(x=>x.id===me().emp))).filter(e=>e.active!==false);
   sc.forEach(e=>{
-    const a=db.appr[e.id],c=apprCalc(e),rs=db.rocks.filter(r=>r.empId===e.id);
-    const canScore=has('hr','chro')||(has('supervisor')&&e.mgr===me().emp);
-    h+=`<div class="card"><div class="row" style="justify-content:space-between"><h3>${esc(e.name)} <span class="muted small">${esc(e.title)}</span></h3><div class="row">${e.flags.map(f=>pill('Disciplinary flag '+f,'bad')).join('')}${a.status==='final'?pill('Final · '+c.rating,'good'):pill('Draft')}</div></div>
+    const a=db.appr[e.id],c=apprCalc(e),rs=db.rocks.filter(r=>r.empId===e.id),ac=apprActor(e);
+    const canScore=a.status==='draft'&&(ac.admin||ac.mine);
+    h+=`<div class="card"><div class="row" style="justify-content:space-between"><h3>${esc(e.name)} <span class="muted small">${esc(e.title)}</span></h3><div class="row">${e.flags.map(f=>pill('Disciplinary flag '+f,'bad')).join('')}${a.status==='final'?pill('Final · '+c.rating,'good'):a.status==='review'?pill('Waiting on '+(ac.cur?nm(ac.cur.id):'HR'),'warn'):pill('Draft')}</div></div>
+    ${ac.st.length?`<div class="small muted" style="margin:2px 0 6px">${ac.st.map((x,k)=>{const done=a.status==='final'||(a.status==='review'&&k<ac.i);return (done?'✓ ':'')+x.lbl+': '+esc(nm(x.id))}).join(' → ')}</div>`:`<div class="small" style="margin:2px 0 6px;color:var(--bad)">No reporting line on file. HR finalizes.</div>`}
     ${rs.map(r=>`<div class="row" style="margin:6px 0"><span style="flex:1 1 220px">${esc(r.title)} ${r.parent?`<span class="small muted">↳ ${esc(db.crocks.find(x=>x.id===r.parent).title)}</span>`:''}</span><span style="flex:0 0 120px">${bar(r.pct,r.pct>=100)}</span><input type="number" min="0" max="100" value="${r.pct}" data-ch="rock" data-id="${r.id}" ${canScore&&a.status!=='final'?'':'disabled'} aria-label="Rock percent"></div>`).join('')}
     <div class="row" style="margin-top:8px"><label class="f">Rocks (50%)<b class="mono">${c.rocks.toFixed(2)}</b></label><label class="f">KPIs (30%)<select data-ch="kpi" data-id="${e.id}" ${canScore&&a.status!=='final'?'':'disabled'}>${opts([1,2,3,4,5],a.kpi)}</select></label><label class="f">Values (20%)<select data-ch="vals" data-id="${e.id}" ${canScore&&a.status!=='final'?'':'disabled'}>${opts([1,2,3,4,5],a.values)}</select></label>
      <label class="f">Final<b class="mono">${c.fin.toFixed(2)} · ${c.rating}</b></label><label class="f">Merit<b class="mono">${c.merit}%</b></label></div>
     ${c.capped?`<p class="small" style="color:var(--bad)">Values score capped at 3 while the disciplinary flag is open.</p>`:''}
     <label class="f" style="margin-top:6px">Individual development plan<textarea data-ch="idp" data-id="${e.id}" ${canScore?'':'disabled'} placeholder="Next-layer gaps, courses, stretch assignment">${esc(a.idp)}</textarea></label>
-    ${canScore&&a.status!=='final'?`<div style="margin-top:8px"><button class="btn primary" data-act="finalize" data-id="${e.id}">Finalize appraisal</button></div>`:''}</div>`;
+    ${a.status==='draft'&&(ac.admin||ac.mine)?`<div style="margin-top:8px"><button class="btn primary" data-act="apsubmit" data-id="${e.id}">${ac.st.length>1?'Submit for approval':'Finalize appraisal'}</button></div>`:''}
+    ${a.status==='review'&&(ac.admin||ac.mine)?`<div style="margin-top:8px" class="row"><button class="btn primary" data-act="apapprove" data-id="${e.id}">${ac.cur&&ac.i===ac.st.length-1?'Approve and finalize':'Approve'}${ac.mine?'':' (HR override)'}</button><button class="btn" data-act="apback" data-id="${e.id}">Send back</button></div>`:''}</div>`;
   });
   return h;
 }
@@ -1869,9 +1885,10 @@ const A={
   log('Hiring','Hired '+a.name+' as '+r.title+'. Created '+id+', 3 onboarding courses, payroll entry');save();toast(a.name+' hired. Record, payroll entry and 3 onboarding courses created.')},
  prog:d=>{const x=db.enr.find(y=>y.empId===d.e&&y.courseId===d.c);x.progress=Math.min(100,x.progress+25);if(x.progress>=100){x.done=todayS();log('Learning',nm(d.e)+' completed '+db.courses.find(c=>c.id===d.c).title)}save();render()},
  enroll:()=>{const e=$('#le').value,c=$('#lc').value;if(db.enr.some(x=>x.empId===e&&x.courseId===c)){toast('Already enrolled');return}db.enr.push({empId:e,courseId:c,progress:0,done:null});log('Learning','Enrolled '+nm(e));save();render()},
- finalize:d=>{const e=emp(d.id),a=db.appr[d.id],c=apprCalc(e);a.status='final';a.vals=c.vals;
-  if(c.merit>0){const to=Math.round(e.salary*(1+c.merit/100));db.props.push({id:'pr'+Date.now(),empId:e.id,rating:c.rating,from:e.salary,to,pct:c.merit,status:'Pending'})}
-  log('Performance','Finalized '+e.name+': '+c.fin.toFixed(2)+' '+c.rating+(c.merit?', merit proposal '+c.merit+'%':''));save();toast(c.merit?'Finalized. Merit proposal sent to Total Rewards.':'Finalized.')},
+ finalize:d=>{apFinal(d.id)},
+ apsubmit:d=>{const e=emp(d.id),a=db.appr[d.id],st=apprSteps(e);if(st.length<2){apFinal(d.id);return}a.status='review';a.step=1;log('Performance','Submitted '+e.name+' for approval to '+nm(st[1].id));save();toast('Sent to '+nm(st[1].id)+' for approval.')},
+ apapprove:d=>{const e=emp(d.id),a=db.appr[d.id],st=apprSteps(e),i=a.step||1;if(i>=st.length-1){log('Performance',(st[i]?nm(st[i].id):'HR')+' approved '+e.name);apFinal(d.id);return}a.step=i+1;log('Performance',nm(st[i].id)+' approved '+e.name+', now with '+nm(st[i+1].id));save();toast('Approved. Now with '+nm(st[i+1].id)+'.')},
+ apback:d=>{const e=emp(d.id),a=db.appr[d.id];a.status='draft';a.step=0;log('Performance','Sent '+e.name+' back to the evaluator');save();toast('Sent back to the evaluator.')},
  propok:d=>{const p=db.props.find(x=>x.id===d.id);p.status='Approved';db.adj.push({id:'ad'+Date.now(),empId:p.empId,type:'salary',newSalary:p.to,label:'Merit '+p.pct+'%: '+peso(p.from)+' to '+peso(p.to)+', effective after this release',source:'Total Rewards',applied:false});log('Total Rewards','Approved merit '+p.pct+'% for '+nm(p.empId));save();const co=emp(p.empId).sbu,mx=bcalc()[co].line.merit;toast(mx.ytd>mx.bud?'Approved. '+co+' merit reserve is now over by '+money(mx.ytd-mx.bud)+'.':'Approved. Queued in Payroll. '+co+' merit reserve used: '+Math.round(mx.ytd/Math.max(1,mx.bud)*100)+'%.')},
  propno:d=>{const p=db.props.find(x=>x.id===d.id);p.status='Rejected';log('Total Rewards','Rejected merit for '+nm(p.empId));save();render()},
  rsvp:d=>{const ev=db.events.find(x=>x.id===d.id),i=ev.going.indexOf(me().emp);if(i>=0)ev.going.splice(i,1);else ev.going.push(me().emp);save();render()},
@@ -2148,9 +2165,8 @@ async function loadEmps(){
   db.roles=Object.fromEntries(Object.entries(db.roles||{}).filter(([k])=>emps.some(e=>e.id===k)));
   if(me_&&!db.roles[me_.id])db.roles[me_.id]='hr';
   window.APPR=null;
-  const {data:am}=await sb.from('approver_matrix').select('employee_id,evaluator_id,evaluator_name,approver1_id,approver1_name,approver2_id,approver2_name');
-  if(am){const eid={};data.forEach(r=>eid[r.id]=r.emp_no);const nm_=i=>{const e=i&&emps.find(x=>x.id===eid[i]);return e?e.name:null};
-   window.APPR=Object.fromEntries(am.map(a=>[eid[a.employee_id],{ev:nm_(a.evaluator_id)||a.evaluator_name,a1:nm_(a.approver1_id)||a.approver1_name,a2:nm_(a.approver2_id)||a.approver2_name}]))}
+  const {data:rl}=await sb.from('hr_reporting_line').select('emp_no,supervisor_no,head_no,manager_no');
+  if(rl)window.APPR=Object.fromEntries(rl.map(a=>[a.emp_no,{ev:a.supervisor_no||null,a1:a.head_no||null,a2:a.manager_no||null}]));
   ui.persona=me_?'p-adm-'+me_.id:null;save();render();
  }catch(e){}
 }
