@@ -485,15 +485,16 @@ function personas(){
   return adm.concat(Object.keys(db.roles||{}).filter(id=>db.emps.some(e=>e.id===id)).map(id=>({id:'p-'+id,label:ROLEL[db.roles[id]]+' · '+db.emps.find(e=>e.id===id).name,role:db.roles[id],emp:id,team:(db.rteam||{})[id]})));
 }
 
-const ALL=['dash','gl','pay','sal','bud','scm','pm','ats','lms','perf','eng','csr','tr','ess','lr','kpi','succ','eff','audit'];
+const ALL=['dash','gl','pay','sal','bud','scm','pm','ats','lms','perf','eng','csr','tr','ess','lr','kpi','succ','eff','goals','audit'];
 const ACCESS={employee:['dash','pm','ess','lms','perf','eng','csr','tr'],supervisor:['dash','scm','pm','ess','lms','perf','eng','csr','tr'],hr:ALL,hrsup:['dash','kpi','ess','lms','perf','eng','csr','tr'],payroll:['dash','pay','ess'],lr:['dash','lr','ess'],proc:['dash','scm','pm','bud','ess'],wh:['dash','scm','ess'],opshead:['dash','scm','pm','ess'],cfo:['dash','scm','pm','bud','pay','ess'],chro:ALL,admin:[...ALL,'adm']};
-const NAV={sal:'Salary structure',dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',succ:'Succession',eff:'Process efficiency',audit:'Audit log',adm:'Admin tools'};
+const NAV={sal:'Salary structure',dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',succ:'Succession',eff:'Process efficiency',goals:'Goal check',audit:'Audit log',adm:'Admin tools'};
 const BLURB={
  sal:['Salary structure','Where every rank sits against the approved CMG structure, and what closing the gap costs. Basic pay only: allowances and benefits are not in the structure or in this view.'],
  adm:['Admin tools','Add and remove what each tab offers: courses, Rocks, warehouses, grade bands, offenses and department budgets. Administrator only.'],
  dash:['Overview','Where the nine modules touch each other right now.'],
  pay:['Timekeeping & Payroll','Attendance in, payslips out. Statutory deductions, loans and disciplinary deductions land here automatically.'],
  ats:['Hiring','Requisition to hire. The offer is blocked until the candidate clears GWC. A hire creates the employee record, payroll entry and onboarding courses.'],
+ goals:['Goal check','How Budget, Projects, Succession, the KPI Cascade, Process efficiency and Supply Chain are contributing to the four goals. Live numbers; gaps say so.'],
  eff:['Productivity and process efficiency',"What's left is human: which steps in the 13 HR Major Activities get deleted, automated or handed to AI, and which stay with a person. Goal G3."],
  succ:['Succession plan','Who steps into each supervisor and manager seat, how ready they are, and the development plan that closes the gap. Goal G2.'],
  lms:['Learning','Courses, progress and Career Lattice readiness. Finishing a course can unlock the next layer.'],
@@ -934,6 +935,43 @@ function viewEff(){
       <div class="row" style="gap:8px;align-items:center">${edit?`<select data-ch="effst" data-id="${r.id}" aria-label="Status">${opts(Object.entries(EFFS),r.st)}</select>`:pill(EFFS[r.st],r.st==='live'?'good':r.st==='build'?'warn':'')}${r.noHumanTask?pill(r.noHumanTask+' task'+(r.noHumanTask>1?'s':'')+' with no human step','warn'):''}</div>
       ${open?`<div style="margin-top:8px">${r.tasks.map(t=>`<div class="row" style="justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(t[0]+' '+t[1])}</span><span style="white-space:nowrap">${effSq(t[2],12)}</span></div>`).join('')}</div>`:''}</div>`}).join('');
   h+=`<div class="note">Source: HR Realignment, What's Left Is Human (13 HR Major Activities, step tags). Retag steps in that chart, then update the arrays here. The 115-service current-state cut (62%) is a separate, larger number and is not loaded in POS. Hours saved are not shown because no step has a time on it yet.</div>`;
+  return h;
+}
+
+/* Goal check: how each module is contributing to the four goals. Live numbers only; anything unmeasured says so. */
+function goalRows(){
+  const KG=kcalc().G,B=kcalc().B,vp=visPrj(),unb=vp.reduce((t,x)=>t+pjHealth(x).unb,0),V=S().vendors,acc=V.filter(v=>v.status==='Accredited').length;
+  const X=bcalc(),f=COS.reduce((a,c)=>a+X[c].tot.fc,0),b=COS.reduce((a,c)=>a+X[c].tot.bud,0);
+  const rock=id=>{const k=db.rocks.filter(r=>r.parent===id);return k.length?Math.round(k.reduce((s,r)=>s+r.pct,0)/k.length):null};
+  const sv=g=>{const o=KG[g],rep=SVC.filter(s=>s.goal===g&&db.kpi.logs[s.id]).length;return [o.n+' HR services map here, '+rep+' with logs','KPI Cascade']};
+  const Q=succStats(),E=effStats(),mk=(l,v,st,m,note)=>({l,v,st,m,note});
+  const tg=(a,t)=>a==null?'none':a>=t?'good':a>=t-.05?'warn':'bad';
+  return [
+   {g:'G1',rock:rock('cr1'),rows:[
+    mk('Earned, not yet billed',money(unb),unb>0?'warn':'good','Projects','Cash waiting to be billed. Lower is better.'),
+    mk('Forecast vs budget, CMG',b>0?(f>b?'+':'')+Math.round((f-b)/b*100)+'%':'No budget loaded',b>0?(f>b?'bad':'good'):'none','Budget','CSI and ABC budgets are not loaded, so this reads one company.'),
+    mk('Collections, AR days, cash balance','Not measured','none','–','The goal is cash, and POS holds none of these yet.')]},
+   {g:'G2',rock:rock('cr3'),rows:[
+    mk('Mid-level seats with a ready-now successor',Q.mn?Q.mPct+'%':'–',Q.mn?(Q.mPct>=50?'good':Q.mReady?'warn':'bad'):'none','Succession',Q.mReady+' of '+Q.mn+' seats. No target set yet.'),
+    mk('Mid-level seats with any named successor',Q.mn?Q.pct(Q.mCov,Q.mn)+'%':'–',Q.mn&&Q.mCov===Q.mn?'good':Q.mCov?'warn':'bad','Succession',(Q.mn-Q.mCov)+' seats have nobody named.'),
+    mk('Successors not ready and without an IDP',String(Q.noIdp),Q.noIdp?'warn':'good','Succession · Learning','IDP execution is a Rock.')]},
+   {g:'G3',rock:null,rows:[
+    mk('HR services on time (B1, target 95%)',pc(B.B1),tg(B.B1,KT.B1),'KPI Cascade',sv('G3')[0]),
+    mk('Steps removed and live in POS',E.live+' of '+E.cut,E.live?'good':'none','Process efficiency','Ceiling is '+E.pct+'% fewer steps. Nothing counts until marked Live.'),
+    mk('Hours saved','Not measured','none','–','No step has a time on it.')]},
+   {g:'G4',rock:null,rows:[
+    mk('Vendors accredited',acc+' of '+V.length,V.length?(acc/V.length>=.5?'good':'warn'):'none','Supply Chain','Accreditation is the only partnership signal POS holds.'),
+    mk('Joint ventures and partnerships','Not measured','none','–','No JV or partner pipeline in POS. Nothing to roll up.')]}];
+}
+function viewGoals(){
+  const R=goalRows();let h=head('goals');
+  const PK={good:['On track','good'],warn:['Watch','warn'],bad:['Off track','bad'],none:['Not measured','']};
+  h+=R.map(r=>{const bad=r.rows.filter(x=>x.st==='bad').length,un=r.rows.filter(x=>x.st==='none').length,m=r.rows.length-un;
+    return `<div class="card"><div class="row" style="justify-content:space-between;gap:8px"><div><b>${r.g}</b> ${esc(GOALS[r.g])}</div><span class="small muted">${m} of ${r.rows.length} measured${bad?' · '+bad+' off track':''}</span></div>
+    ${r.rock!=null?`<div class="row" style="gap:8px;margin:6px 0"><span class="small muted" style="flex:0 0 120px">Company Rock</span><span style="flex:1">${bar(r.rock,r.rock>=100)}</span><span class="small">${r.rock}%</span></div>`:''}
+    ${r.rows.map(x=>`<div class="row" style="justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap"><div style="flex:1;min-width:190px"><div>${esc(x.l)}</div><div class="small muted">${esc(x.note)}${x.m!=='–'?' · '+esc(x.m):''}</div></div><div style="text-align:right"><b>${esc(x.v)}</b> ${pill(PK[x.st][0],PK[x.st][1])}</div></div>`).join('')}</div>`}).join('');
+  const un=R.reduce((t,r)=>t+r.rows.filter(x=>x.st==='none').length,0),all=R.reduce((t,r)=>t+r.rows.length,0);
+  h+=`<div class="note"><b>Read this first, James.</b> ${all-un} of ${all} contribution measures have a live number. G1 is the goal with the cash, and POS cannot see collections or cash balance. G4 has almost nothing to roll up. Pick a measure and an owner for each gap before Q4 reviews, or those goals report on activity, not results.</div>`;
   return h;
 }
 
@@ -1783,7 +1821,7 @@ function scopeCard(tab){
   const sw=`<div class="row" style="margin-bottom:8px"><span class="small muted" style="margin-right:6px">View by</span>${[['BA','BA · company'],['BU','BU · department'],['FG','FG · section']].map(([k,n])=>`<button class="btn sm ${V===k?'primary':''}" data-act="bview" data-id="${k}">${n}</button>`).join('')}</div>`;
   return `<div class="card" style="margin-bottom:12px"><h3>By ${V==='BA'?'company (BA)':V==='BU'?'department (BU)':'section (FG)'}</h3>${sw}${rows.length?table([[V==='BA'?'BA':V==='BU'?'BA › BU':'BA › BU › FG'],...cols.map(c=>[c,'r'])],rows.map(g=>`<tr><td class="wrap">${esc(g.k)}</td>${cols.map((_,i)=>`<td class="r">${cell(g,i)}</td>`).join('')}</tr>`).concat([`<tr><td><b>Total</b></td>${cols.map((_,i)=>`<td class="r"><b>${fm[i]==='avg'?'':fm[i]==='$'?esc(money(tot[i])):Math.round(tot[i]*10)/10}</b></td>`).join('')}</tr>`])):'<p class="muted small">Nothing to group yet.</p>'}${minN?'<p class="small muted">Pulse results show only for groups of '+minN+' or more responses, so nobody can be picked out.</p>':''}</div>`;
 }
-const VIEWS={sal:viewSal,gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,succ:viewSucc,eff:viewEff,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
+const VIEWS={sal:viewSal,gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,succ:viewSucc,eff:viewEff,goals:viewGoals,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
 function render(){
   const y=window.scrollY,allowed=ACCESS[role()];
   if(!allowed.includes(ui.tab))ui.tab='dash';
