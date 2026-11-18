@@ -686,7 +686,7 @@ const scope=()=>has('hr','chro','payroll','lr')?db.emps:has('supervisor')?[emp(m
 const cur=()=>emp(me().emp);
 
 /* ============ views ============ */
-function head(k,extra){return `<div class="head"><div><h2>${BLURB[k][0]}</h2><p>${BLURB[k][1]}</p></div>${extra||''}</div>`}
+function head(k,extra){return `<div class="head"><div><h2>${BLURB[k][0]}</h2><p>${BLURB[k][1]}</p></div>${extra||''}</div><!--SCOPE-->`}
 function table(cols,rows,cls){return `<div class="scroll"><table><thead><tr>${cols.map(c=>`<th class="${c[1]||''}">${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan="${cols.length}" class="muted">Nothing here yet.</td></tr>`}</tbody></table></div>`}
 
 function pendingFor(){
@@ -1644,6 +1644,28 @@ function viewAdm(){
     ${table([['Account'],['Proposed','r'],['']],(sel.dept_budget_line||[]).slice().sort((a,b)=>String(a.account_code||'ZZ').localeCompare(String(b.account_code||'ZZ'))).map(l=>`<tr><td class="wrap">${esc(l.account_code||'NEW')} · ${esc(l.account)}</td><td class="r mono">${esc(money(+l.proposed))}</td><td><button class="btn sm" data-act="admlndel" data-id="${esc(l.id)}">Remove</button></td></tr>`))}`:''}</div>`}
   return h;
 }
+/* BA / BU / FG view, shared by every people-based module (BA = company, BU = department, FG = section) */
+function scopeCard(tab){
+  const V=ui.bview||'FG',E=db.emps.filter(e=>e.active!==false&&COS.includes(e.sbu)),pn=id=>emp(id);
+  const byE=(arr,f)=>arr.filter(x=>COS.includes(pn(x.empId).sbu)).map(x=>({o:pn(x.empId),v:f(x)}));
+  let cols,items,fm=[],minN=0;
+  if(tab==='pay'){cols=['People','Monthly basic pay'];fm=['n','$'];items=E.map(e=>({o:e,v:[1,e.salary]}))}
+  else if(tab==='ats'){cols=['Open positions','Filled'];fm=['n','n'];items=db.reqs.filter(r=>COS.includes(r.sbu)).map(r=>({o:r,v:[Math.max(0,r.headcount-r.filled),r.filled]}))}
+  else if(tab==='lms'){cols=['Enrolments','Completed'];fm=['n','n'];items=byE(db.enr,x=>[1,x.done?1:0])}
+  else if(tab==='perf'||tab==='tr'){cols=['Merit pending','Merit approved'];fm=['n','n'];items=byE(db.props,x=>[x.status==='Pending'?1:0,x.status==='Approved'?1:0])}
+  else if(tab==='eng'){cols=['Responses','Pulse score'];fm=['n','avg'];minN=5;items=byE(db.pulse,x=>[1,(x.q1+x.q2+x.q3)/3])}
+  else if(tab==='csr'){cols=['Volunteer entries','Hours'];fm=['n','n'];items=byE(db.vol,x=>[1,x.hours])}
+  else if(tab==='ess'){cols=['Requests','Pending'];fm=['n','n'];items=byE(db.req,x=>[1,x.status==='Pending'?1:0])}
+  else if(tab==='lr'){cols=['Cases','Open'];fm=['n','n'];items=byE(db.cases,x=>[1,x.stage!=='Decided'?1:0])}
+  else return '';
+  const key=o=>{const a=o.sbu,d=o.dept||'General',s=o.sec||'';return V==='BA'?a:V==='BU'?a+' › '+d:a+' › '+d+' › '+(s||'no section')};
+  const G={};items.forEach(it=>{const k=key(it.o),g=G[k]||(G[k]={k,v:cols.map(()=>0),n:0});it.v.forEach((x,i)=>g.v[i]+=x);g.n++});
+  const rows=Object.values(G).sort((a,b)=>a.k.localeCompare(b.k));
+  const tot=cols.map((_,i)=>rows.reduce((s,g)=>s+g.v[i],0));
+  const cell=(g,i)=>fm[i]==='avg'?(g.n<minN?'<span class="muted">n&lt;'+minN+' hidden</span>':(g.v[i]/g.n).toFixed(1)+' / 5'):fm[i]==='$'?esc(money(g.v[i])):Math.round(g.v[i]*10)/10;
+  const sw=`<div class="row" style="margin-bottom:8px"><span class="small muted" style="margin-right:6px">View by</span>${[['BA','BA · company'],['BU','BU · department'],['FG','FG · section']].map(([k,n])=>`<button class="btn sm ${V===k?'primary':''}" data-act="bview" data-id="${k}">${n}</button>`).join('')}</div>`;
+  return `<div class="card" style="margin-bottom:12px"><h3>By ${V==='BA'?'company (BA)':V==='BU'?'department (BU)':'section (FG)'}</h3>${sw}${rows.length?table([[V==='BA'?'BA':V==='BU'?'BA › BU':'BA › BU › FG'],...cols.map(c=>[c,'r'])],rows.map(g=>`<tr><td class="wrap">${esc(g.k)}</td>${cols.map((_,i)=>`<td class="r">${cell(g,i)}</td>`).join('')}</tr>`).concat([`<tr><td><b>Total</b></td>${cols.map((_,i)=>`<td class="r"><b>${fm[i]==='avg'?'':fm[i]==='$'?esc(money(tot[i])):Math.round(tot[i]*10)/10}</b></td>`).join('')}</tr>`])):'<p class="muted small">Nothing to group yet.</p>'}${minN?'<p class="small muted">Pulse results show only for groups of '+minN+' or more responses, so nobody can be picked out.</p>':''}</div>`;
+}
 const VIEWS={sal:viewSal,gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
 function render(){
   const y=window.scrollY,allowed=ACCESS[role()];
@@ -1651,7 +1673,7 @@ function render(){
   $('#app').innerHTML=`<header class="top"><div class="brand"><div class="mark">P</div><div><b>CMG People & Pay OS</b><small>PSC · CSI · ABC · one employee record, nine modules</small></div></div>
    <div class="who"><label for="who" class="small">View as</label><select id="who" data-ch="persona">${opts(personas().map(p=>[p.id,p.label]),me().id)}</select><button class="btn sm" data-act="tab" data-id="gl" style="display:none"></button></div></header>
    <nav class="rail" aria-label="Modules">${allowed.map(k=>`<button data-act="tab" data-id="${k}" ${ui.tab===k?'aria-current="true"':''}>${NAV[k]}</button>`).join('')}</nav>
-   <div><main>${VIEWS[ui.tab]()}</main><div class="foot">Data saves to the CMG cloud when you are signed in; otherwise it stays in this browser. CMG scope: PSC, CSI and ABC. Production path: schema.sql on Supabase with row-level security, then deploy this front end on Vercel or GitHub Pages.</div></div>
+   <div><main>${VIEWS[ui.tab]().replace('<!--SCOPE-->',()=>scopeCard(ui.tab))}</main><div class="foot">Data saves to the CMG cloud when you are signed in; otherwise it stays in this browser. CMG scope: PSC, CSI and ABC. Production path: schema.sql on Supabase with row-level security, then deploy this front end on Vercel or GitHub Pages.</div></div>
    ${ui.modal?`<div class="veil" data-act="closemodal"><div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h3>${esc(ui.modal.title)}</h3><button class="btn sm" data-act="closemodal">Close</button></div>${ui.modal.html}</div></div>`:''}
    ${ui.toast?`<div class="toast" role="status">${esc(ui.toast)}</div>`:''}`;
   window.scrollTo(0,y);
