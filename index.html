@@ -2138,7 +2138,7 @@ async function loadEmps(){
   const byId={};data.forEach(r=>byId[r.id]=r.emp_no);
   const cap=x=>x.toLowerCase().replace(/(^|[\s\-.'(])([a-zñ])/g,(m,p,c)=>p+c.toUpperCase()).replace(/\b(Ii|Iii|Iv|Jr)\b/g,m=>m==='Jr'?'Jr.':m.toUpperCase());
   const emps=data.map(r=>{const k=r.full_name.lastIndexOf(',');const l=k<0?r.full_name:r.full_name.slice(0,k),f=k<0?'':r.full_name.slice(k+1);const name=cap((f+' '+l).replace(/\s+/g,' ').trim());
-   return {id:r.emp_no,name,sbu:r.company?r.company.code:'PSC',dept:r.dept||'General',sec:r.section||'',title:r.title||'Employee',grade:r.grade,salary:+r.monthly_salary,mgr:r.manager_id?byId[r.manager_id]||null:null,lat:r.lattice_layer||1,hired:r.date_hired,active:r.active!==false,flags:[]}});
+   return {id:r.emp_no,name,sbu:r.company?r.company.code:'BOARD',dept:r.dept||'General',sec:r.section||'',title:r.title||'Employee',grade:r.grade,salary:+r.monthly_salary,mgr:r.manager_id?byId[r.manager_id]||null:null,lat:r.lattice_layer||1,hired:r.date_hired,active:r.active!==false,flags:[]}});
   const {data:gb}=await sb.from('grade_band').select('grade,band_min,band_mid,band_max');
   if(gb&&gb.length){db.bands={};gb.forEach(g=>{db.bands[g.grade]=[+g.band_min,+g.band_mid,+g.band_max]});applyRefs()}
   db.emps=emps;
