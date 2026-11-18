@@ -771,7 +771,7 @@ function viewDash(){
   if(has('hr','chro','proc','opshead','cfo','wh','payroll')){tiles.push([S().prs.filter(p=>!['PO issued','Rejected'].includes(p.status)).length,'Open purchase requests']);tiles.push([lowLines().length,'Low-stock lines'])}
   if(has('opshead','cfo'))tiles.push([scmWaiting(),'PRs waiting on your approval']);
   if(ACCESS[role()].includes('pm')){tiles.push([pmRed(),'Projects at red']);tiles.push([myOverdue(),'My overdue tasks'])}
-  if(has('hr','chro','payroll')){const X=bcalc(),f=COS.reduce((a,c)=>a+X[c].tot.fc,0),b=COS.reduce((a,c)=>a+X[c].tot.bud,0);tiles.push([(f>b?'+':'')+Math.round((f-b)/Math.max(1,b)*100)+'%','Forecast vs budget, CMG'])}
+  if(has('hr','chro','payroll')){const X=bcalc(),f=COS.reduce((a,c)=>a+X[c].tot.fc,0),b=COS.reduce((a,c)=>a+X[c].tot.bud,0);tiles.push([b>0?(f>b?'+':'')+Math.round((f-b)/b*100)+'%':'No budget loaded','Forecast vs budget, CMG'])}
   if(has('hr','chro','hrsup')){const b=kcalc().B;tiles.push([pc(b.B1),'HR services on time (B1)'])}
   if(has('hr','chro'))tiles.push([glReady()+'%','Go-live readiness']);
   const pf=pendingFor().length;tiles.push([pf,'Approvals waiting on you']);
@@ -779,7 +779,7 @@ function viewDash(){
   const COL=['#ff8a3d','#19b8a6','#8b5cf6','#ffc857','#4f8df5','#ef476f'];
   const rest=tiles;
   const KG=kcalc().G,vp=visPrj(),unb=vp.reduce((t,x)=>t+pjHealth(x).unb,0),acc=S().vendors.filter(v=>v.status==='Accredited').length;
-  let fcv='';if(has('hr','chro','payroll')){const X=bcalc(),f=COS.reduce((a,c)=>a+X[c].tot.fc,0),b=COS.reduce((a,c)=>a+X[c].tot.bud,0);fcv=' · forecast '+(f>b?'+':'')+Math.round((f-b)/Math.max(1,b)*100)+'% vs budget'}
+  let fcv='';if(has('hr','chro','payroll')){const X=bcalc(),f=COS.reduce((a,c)=>a+X[c].tot.fc,0),b=COS.reduce((a,c)=>a+X[c].tot.bud,0);fcv=b>0?' · forecast '+(f>b?'+':'')+Math.round((f-b)/b*100)+'% vs budget':' · no budget loaded yet'}
   const gr_=g=>KG[g].closed?pc(KG[g].ontime/KG[g].closed)+' HR services on time':'HR services: no logs yet';
   const big=[['G1',money(unb),'earned, not yet billed'+fcv,'Budget · Projects · Supply Chain'],
    ['G2',Math.round(dn/Math.max(1,enr)*100)+'%','training completion feeding readiness','Learning · Performance · Rewards'],
