@@ -505,7 +505,7 @@ const BLURB={
  scm:['Supply Chain','Request to payment: PR, canvass, PO, receiving, stock, dispatch. Vendors, payables and projects sit on the same HR roster and the same budget.'],
  pm:['Projects','Schedule, crew, risks and billing per project. Tasks have owners from the CMG roster, materials come from Supply Chain, cost is checked against the contract.'],
  bud:['Budget by Company','Annual budget per company (PSC, CSI, ABC): wages, overtime, contributions, benefits and HR programs. Payroll, hiring and merit feed the actuals and the forecast.'],
- kpi:['HR KPI Cascade','HR Services to CMG (PSC, CSI, ABC): KPIs roll up from the owner of each service, to the team supervisor, to the HR Shared Services business unit, to the four Q3 2027 goals.'],
+ kpi:['HR KPI Cascade','HR Services to CMG (PSC, CSI, ABC): KPIs roll up from the owner of each service, to the team supervisor, to the HR Shared Services business unit, to the four Q4 2026 goals.'],
  audit:['Audit log','Append-only record of every sensitive change.']};
 
 /* ============ payroll engine ============ */
@@ -1042,7 +1042,7 @@ function viewKpi(){
   if(ui.kt==='los')h+=kLos(X);else if(ui.kt==='bu')h+=kBu(X);else if(ui.kt==='team')h+=kTeam(X);else if(ui.kt==='ind')h+=kInd(X);else if(ui.kt==='s1')h+=kS1(X);else h+=kRules();
   return h;
 }
-/* Line of Sight: Individual owner -> Team KPI -> Rock (Q3 2027 goal). Patterned on the PGB HR Ecosystem cascade. */
+/* Line of Sight: Individual owner -> Team KPI -> Rock (Q4 2026 goal). Patterned on the PGB HR Ecosystem cascade. */
 function svcStatus(s){
   const K=db.kpi;
   if(s.ms){const cy=(K.mile&&K.mile[s.id])||[];if(!cy.length)return null;let st='good';
@@ -1068,7 +1068,7 @@ function kLos(X){
    <div class="tile"><div class="n">${ST.bad}</div><div class="l">Off track<br>${rep?pc(ST.bad/rep):'–'} of reporting</div></div>
    <div class="tile"><div class="n">${ST.none}</div><div class="l">Not reporting<br>no entry yet</div></div></div>`;
   h+=`<div class="card"><h3>Status distribution</h3>${bar(ST,tot)}<p class="small muted">On track: on-time at or above 95% and first-time-right at or above 98%. At risk: within 5% of both. Off track: below that. A milestone is on track while open cycles are on schedule, at risk within 14 days of due, off track when overdue or late.</p></div>`;
-  h+=`<div class="card"><h3>Line of sight</h3><p class="small muted">Individual owner, then team KPI, then the Q3 2027 goal it serves. Read each goal from the top: its health, then which teams carry it and who owns the services.</p></div>`;
+  h+=`<div class="card"><h3>Line of sight</h3><p class="small muted">Individual owner, then team KPI, then the Q4 2026 goal it serves. Read each goal from the top: its health, then which teams carry it and who owns the services.</p></div>`;
   Object.keys(GOALS).forEach(k=>{const g=byG[k],gr=g.good+g.warn+g.bad,gh=gr?g.good/gr:null;
     h+=`<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${k} · ${esc(GOALS[k])}</h3>${gh==null?pill('No data'):pill(pc(gh)+' on track',cls(gh))}</div>
      <p class="small muted">${g.n} services · ${gr} reporting · ${g.good} on track · ${g.warn} at risk · ${g.bad} off track</p>${bar(g,g.n)}`;
@@ -1102,7 +1102,7 @@ function kBu(X){
   let h=`<div class="grid tiles">${tile('B1','Service SLA compliance',B.B1,'95%',pc)}${tile('B2','First-time-right',B.B2,'98%',pc)}${tile('B3','TAT agreed, all services',B.B3,'100%',pc)}${tile('B4','Service satisfaction (1-5)',B.B4,'4.3',v=>v==null?'–':v.toFixed(1))}${tile('B5','Team score composite',B.B5,'100%',pc)}</div>`;
   h+=`<div class="card"><h3>Teams</h3>${table([['Team'],['Services','r'],['S1 On-time','r'],['S2 First-time-right','r'],['S3 TAT agreed','r'],['S4 Outcome'],['Team score','r']],
    Object.keys(TEAMS).map(t=>{const b=X.T[t];return `<tr><td class="wrap"><b>${esc(TEAMS[t].full)}</b></td><td class="r">${b.n}</td><td class="r">${ragp(b.S1,KT.I1)}</td><td class="r">${ragp(b.S2,KT.I2)}</td><td class="r">${ragp(b.S3,1)}</td><td class="wrap">${esc(TEAMS[t].s4.label)}: <b>${esc(s4fmt(t,b.s4v))}</b> <span class="small muted">target ${esc(s4fmt(t,TEAMS[t].s4.target))}</span></td><td class="r mono"><b>${pc(b.score)}</b></td></tr>`}))}</div>`;
-  h+=`<div class="card"><h3>Roll-up to the four Q3 2027 goals</h3>${table([['Goal'],['Services','r'],['Services reporting','r'],['On-time rate','r']],
+  h+=`<div class="card"><h3>Roll-up to the four Q4 2026 goals</h3>${table([['Goal'],['Services','r'],['Services reporting','r'],['On-time rate','r']],
    Object.keys(GOALS).map(g=>{const o=X.G[g],rep=SVC.filter(s=>s.goal===g&&K.logs[s.id]).length;return `<tr><td class="wrap"><b>${g}</b> ${esc(GOALS[g])}</td><td class="r">${o.n}</td><td class="r">${rep}</td><td class="r">${ragp(o.closed?o.ontime/o.closed:null,KT.I1)}</td></tr>`}))}
    <p class="small muted">Be straight about the limit: HR service speed supports these goals. It does not prove them. G1, G2 and G4 also need outcome numbers owned outside HR (Finance, the succession tracker, SBU heads). Until someone owns those, this rows show HR's contribution only.</p></div>`;
   h+=`<div class="card"><h3>Data checks</h3><div class="row">${pill(nolog+' services with no entry this month',nolog?'warn':'good')}${pill(noown+' services with no owner',noown?'warn':'good')}${pill(prop+' TATs still proposed, not agreed',prop?'warn':'good')}</div>
