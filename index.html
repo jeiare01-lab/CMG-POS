@@ -6,7 +6,7 @@
 <title>CMG People & Pay OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* Industrial modern: graphite rail, cool steel surfaces, wide air, safety-orange used only as the marker. */
 :root{--bg:#f4f6f8;--surface:#ffffff;--surface2:#f7f9fb;--ink:#161b22;--muted:#667281;--line:#e6eaef;--line2:#d5dbe3;--accent:#1f2a37;--on-accent:#ffffff;--signal:#f26b21;--steel:#3b4a5c;--good:#17784f;--warn:#9a5b00;--bad:#b3261e;--good-bg:#e6f4ed;--warn-bg:#fdf1de;--bad-bg:#fbe9e7;--rail:#161d27;--rail-ink:#aab5c2;--r:14px;--sh:0 1px 2px rgba(22,27,34,.04),0 8px 24px -12px rgba(22,27,34,.10);--sh2:0 2px 4px rgba(22,27,34,.05),0 16px 32px -14px rgba(22,27,34,.18);--display:'Manrope',system-ui,sans-serif;--body:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;color-scheme:light}
@@ -236,6 +236,57 @@ nav.rail button[aria-current="true"]{background:linear-gradient(90deg,#f26b21,#f
 nav.rail button[aria-current="true"]:before{background:#fff;box-shadow:0 0 10px rgba(255,255,255,.8);width:7px;height:7px;left:auto;top:auto;bottom:auto;border-radius:50%;opacity:1}
 @media (min-width:900px){nav.rail{box-shadow:0 22px 44px -22px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.08)}}
 @media (max-width:899px){nav.rail{background:linear-gradient(90deg,#0a1b35,#0b3a38) !important}nav.rail button{background:rgba(255,255,255,.06)}}
+
+/* ---- PGB HR Ecosystem look: navy canvas, cream ink, orange marker, Fraunces + IBM Plex ---- */
+:root,:root[data-theme],:root:not([data-theme="light"]){--bg:#0D1B3D;--surface:#132552;--surface2:#1a3068;--ink:#FEF9F3;--muted:#B9C3DE;--steel:#B9C3DE;--line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.18);--accent:#FEF9F3;--on-accent:#0D1B3D;--signal:#E65100;--good:#5fd35f;--warn:#fab219;--bad:#ff8a8a;--good-bg:rgba(12,163,12,.18);--warn-bg:rgba(250,178,25,.16);--bad-bg:rgba(208,59,59,.22);--rail:#132552;--rail-ink:#B9C3DE;--r:14px;--sh:none;--sh2:0 10px 28px -14px rgba(0,0,0,.6);--display:'Fraunces',Georgia,serif;--body:'IBM Plex Sans',-apple-system,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace;--gs:linear-gradient(135deg,#E65100,#ff8a3d);--gp:linear-gradient(135deg,#E65100,#ff8a3d);--gcard:rgba(255,255,255,.045);--gbg:none;color-scheme:dark}
+html{background:#0D1B3D}
+body{background:radial-gradient(1200px 700px at 90% -10%,#1a3068 0%,transparent 60%),radial-gradient(900px 600px at -10% 110%,#0a1530 0%,transparent 55%),#0D1B3D !important;color:var(--ink);font-family:var(--body)}
+body:before{display:none !important}
+h1,h2,h3,.serif,.hero h2,.stat .n,.tile .n,.stat .gn,.brand b{font-family:var(--display) !important;font-weight:600;letter-spacing:0}
+h2,.head h2,.hero h2{color:#FEF9F3}
+.head p,.hero p{color:#B9C3DE}.hero-k,.goalhd,.stat .gk{color:#7C87AA}
+header.top{background:rgba(13,27,61,.94) !important;border-bottom:1px solid var(--line);box-shadow:none;backdrop-filter:blur(10px)}
+.mark{background:linear-gradient(135deg,#E65100,#ff8a3d);color:#fff;border-radius:10px}
+.mark:after{display:none}
+.brand small{color:#7C87AA}
+.who select,select,input,textarea{background:rgba(255,255,255,.06) !important;color:#FEF9F3;border:1px solid var(--line2);border-radius:10px}
+option{color:#161b22;background:#fff}
+nav.rail{background:#132552 !important;border:0}
+nav.rail button{color:#B9C3DE !important;background:transparent !important;border-color:transparent !important}
+nav.rail button:before{display:none !important}
+nav.rail button:hover{background:rgba(255,255,255,.06) !important;color:#FEF9F3 !important}
+nav.rail button[aria-current="true"]{background:rgba(230,81,0,.18) !important;color:#FEF9F3 !important;box-shadow:inset 3px 0 0 #E65100 !important}
+@media (min-width:900px){nav.rail{box-shadow:none;border:1px solid var(--line)}}
+@media (max-width:899px){nav.rail{background:#132552 !important}nav.rail button[aria-current="true"]{box-shadow:inset 0 -2px 0 #E65100 !important}}
+.card,.tile,.col,.cand,.link{background:rgba(255,255,255,.045) !important;border:1px solid var(--line) !important;border-radius:14px;box-shadow:none !important}
+.tile:before{left:18px;top:0;width:22px;height:3px;border-radius:0 0 3px 3px;background:#E65100 !important;opacity:1}
+.tile .n{background:none !important;-webkit-text-fill-color:#FEF9F3;color:#FEF9F3}
+.tile .l,.stat .l,.muted,label.f,.rd span,.flow .from{color:#B9C3DE}
+th{color:#7C87AA;border-bottom:1px solid var(--line2)}
+td{color:#FEF9F3}
+tbody tr:hover td{background:rgba(255,255,255,.04)}
+.btn{background:rgba(255,255,255,.06);border:1px solid var(--line2);color:#FEF9F3;border-radius:999px}
+.btn:hover{background:rgba(255,255,255,.12);border-color:#7C87AA}
+.btn.primary,.btn.primary:hover{background:linear-gradient(135deg,#E65100,#ff8a3d);border:0;color:#fff;box-shadow:none}
+.btn.danger{color:#ff8a8a;border-color:#d03b3b}
+.pill{background:rgba(255,255,255,.07);color:#B9C3DE;border:1px solid var(--line)}
+.pill.good{background:rgba(12,163,12,.18);color:#5fd35f;border-color:transparent}
+.pill.warn{background:rgba(250,178,25,.16);color:#fab219;border-color:transparent}
+.pill.bad{background:rgba(208,59,59,.22);color:#ff8a8a;border-color:transparent}
+.bar{background:rgba(255,255,255,.1)}.bar i{background:#E65100}.bar.good i{background:#0ca30c}
+.steps span.on,.gwc button.on{background:#E65100;border-color:#E65100;color:#fff}
+.gwc button{background:rgba(255,255,255,.06);color:#FEF9F3}
+.modal{background:#132552;color:#FEF9F3;border:1px solid var(--line2)}
+.modal pre{background:rgba(255,255,255,.05)}
+.toast{background:#1a3068;color:#FEF9F3;border:1px solid var(--line2)}
+.note{background:rgba(250,178,25,.12);border-left:3px solid #E65100;color:#FEF9F3}
+.ribbon{background:rgba(255,255,255,.045);border:1px solid var(--line)}
+.stat+.stat{border-left-color:var(--line)}.stat .fd{border-top-color:var(--line);color:#7C87AA}
+.rd{background:rgba(255,255,255,.05);border-color:var(--line)}
+.flow:before{background:linear-gradient(180deg,#E65100,#3987e5,#199e70,#c98500,#d55181)}
+.foot,:root[data-theme] .foot{color:#7C87AA;text-shadow:none}
+a{color:#ff8a3d}
+:root[data-theme] .foot,:root:not([data-theme="light"]) .foot,.foot{color:#7C87AA !important;text-shadow:none}
 </style>
 </head>
 <body>
