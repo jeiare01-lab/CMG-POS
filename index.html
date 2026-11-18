@@ -2167,6 +2167,8 @@ async function loadEmps(){
   if(me_&&!db.roles[me_.id])db.roles[me_.id]='hr';
   if(!db.rolesSeed1){const seed={'00001776':'payroll','00000963':'wh','00000315':'opshead','EXEC-001':'cfo','00000005':'cfo'};
    Object.entries(seed).forEach(([k,v])=>{if(emps.some(e=>e.id===k)&&!db.roles[k])db.roles[k]=v});db.rolesSeed1=true}
+  if(!db.rolesSeed2){const seed={'EXT-001':'payroll','EXT-002':'payroll','EXT-003':'lr'};
+   Object.entries(seed).forEach(([k,v])=>{if(emps.some(e=>e.id===k)&&!db.roles[k])db.roles[k]=v});db.rolesSeed2=true}
   window.APPR=null;
   const {data:rl}=await sb.from('hr_reporting_line').select('emp_no,supervisor_no,head_no,manager_no');
   if(rl)window.APPR=Object.fromEntries(rl.map(a=>[a.emp_no,{ev:a.supervisor_no||null,a1:a.head_no||null,a2:a.manager_no||null}]));
