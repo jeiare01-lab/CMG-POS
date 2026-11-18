@@ -485,15 +485,16 @@ function personas(){
   return adm.concat(Object.keys(db.roles||{}).filter(id=>db.emps.some(e=>e.id===id)).map(id=>({id:'p-'+id,label:ROLEL[db.roles[id]]+' · '+db.emps.find(e=>e.id===id).name,role:db.roles[id],emp:id,team:(db.rteam||{})[id]})));
 }
 
-const ALL=['dash','gl','pay','sal','bud','scm','pm','ats','lms','perf','eng','csr','tr','ess','lr','kpi','succ','audit'];
+const ALL=['dash','gl','pay','sal','bud','scm','pm','ats','lms','perf','eng','csr','tr','ess','lr','kpi','succ','eff','audit'];
 const ACCESS={employee:['dash','pm','ess','lms','perf','eng','csr','tr'],supervisor:['dash','scm','pm','ess','lms','perf','eng','csr','tr'],hr:ALL,hrsup:['dash','kpi','ess','lms','perf','eng','csr','tr'],payroll:['dash','pay','ess'],lr:['dash','lr','ess'],proc:['dash','scm','pm','bud','ess'],wh:['dash','scm','ess'],opshead:['dash','scm','pm','ess'],cfo:['dash','scm','pm','bud','pay','ess'],chro:ALL,admin:[...ALL,'adm']};
-const NAV={sal:'Salary structure',dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',succ:'Succession',audit:'Audit log',adm:'Admin tools'};
+const NAV={sal:'Salary structure',dash:'Overview',gl:'Go-live',pay:'Payroll',bud:'Budget',scm:'Supply Chain',pm:'Projects',ats:'Hiring',lms:'Learning',perf:'Performance',eng:'Engagement',csr:'CSR',tr:'Total Rewards',ess:'Self-Service',lr:'Labor Relations',kpi:'HR KPI Cascade',succ:'Succession',eff:'Process efficiency',audit:'Audit log',adm:'Admin tools'};
 const BLURB={
  sal:['Salary structure','Where every rank sits against the approved CMG structure, and what closing the gap costs. Basic pay only: allowances and benefits are not in the structure or in this view.'],
  adm:['Admin tools','Add and remove what each tab offers: courses, Rocks, warehouses, grade bands, offenses and department budgets. Administrator only.'],
  dash:['Overview','Where the nine modules touch each other right now.'],
  pay:['Timekeeping & Payroll','Attendance in, payslips out. Statutory deductions, loans and disciplinary deductions land here automatically.'],
  ats:['Hiring','Requisition to hire. The offer is blocked until the candidate clears GWC. A hire creates the employee record, payroll entry and onboarding courses.'],
+ eff:['Productivity and process efficiency',"What's left is human: which steps in the 13 HR Major Activities get deleted, automated or handed to AI, and which stay with a person. Goal G3."],
  succ:['Succession plan','Who steps into each supervisor and manager seat, how ready they are, and the development plan that closes the gap. Goal G2.'],
  lms:['Learning','Courses, progress and Career Lattice readiness. Finishing a course can unlock the next layer.'],
  perf:['Performance','Company Rocks cascade to individual Rocks. Appraisal results feed Total Rewards.'],
@@ -784,7 +785,7 @@ function viewDash(){
   const gr_=g=>KG[g].closed?pc(KG[g].ontime/KG[g].closed)+' HR services on time':'HR services: no logs yet';
   const big=[['G1',money(unb),'earned, not yet billed'+fcv,'Budget · Projects · Supply Chain'],
    ['G2',(()=>{const q=succStats();return q.mn?q.mPct+'%':'–'})(),'mid-level seats with a ready-now successor','Succession · Learning · Performance'],
-   ['G3',(()=>{const b=has('hr','chro','hrsup')?kcalc().B.B1:KG.G3.closed?KG.G3.ontime/KG.G3.closed:null;return pc(b)})(),'HR services delivered on time','KPI Cascade · Payroll · Projects'],
+   ['G3',(()=>{const b=has('hr','chro','hrsup')?kcalc().B.B1:KG.G3.closed?KG.G3.ontime/KG.G3.closed:null;return pc(b)})(),'HR services delivered on time','KPI Cascade · Process efficiency · Payroll'],
    ['G4',acc+' / '+S().vendors.length,'vendors accredited','Supply Chain · Hiring · Projects']];
   return `<section class="hero"><div class="hero-k">${esc(TODAY.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'}))}</div><h2>${gr}, ${esc(fn)}.</h2><p>${BLURB.dash[1]}</p></section>
   <div class="goalhd">The four goals every module serves · Q3 2027</div>
@@ -882,6 +883,57 @@ function viewSucc(){
     ${edit&&r.list.length<3?`<div class="row" style="padding-top:8px;border-top:1px solid var(--line)"><select data-ch="succadd" data-seat="${esc(s.id)}" aria-label="Name a successor"><option value="">+ Name a successor (${pool.length} eligible)</option>${pool.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} · JG${gn(c)}${c.mgr===s.id?' · reports to seat':c.dept===s.dept?' · same dept':''}</option>`).join('')}</select></div>`:''}
     ${r.flags.length?`<div class="small" style="margin-top:6px;color:var(--warn,#b45309)">${r.flags.map(esc).join(' · ')}</div>`:''}</div>`}).join('')||`<div class="card muted">No seats in this view.</div>`;
   h+=`<div class="note">Seats are CMG people at JG10-15 on the current org file. Up to 3 successors per seat. Candidates must sit below the seat and at JG5 or higher. Lattice layers in the database are all still L1, so readiness here is your call, not computed. Fill the layers before leaning on the Learning readiness view.</div>`;
+  return h;
+}
+
+/* Process efficiency (goal G3): "What's left is human" step tags for the 13 HR Major Activities.
+   Tags per step: 0 Delete, 1 Automate, 2 Use AI, 3 Keep human. First-pass proposal from the HR Realignment worksheet, not a measurement. */
+const EFFT=[['Delete','#C0472F'],['Automate','#8FAE96'],['Use AI','#2C6FB7'],['Keep human','#14201C']];
+const EFF=[
+ ['A1','Preboarding','Offer accepted to Day 0','Hiring',[['1.1','Lock the paperwork pack','11'],['1.2','Provision the seat','1'],['1.3','Send the welcome note','2'],['1.4','Prep the manager','2']]],
+ ['A2','Onboarding','Day 1 to Day 90','Learning · Performance',[['2.1','Run the Day 1 orientation','31'],['2.2','Set the 30/60/90 Rocks','3'],['2.3','Match a buddy and run check-ins','3'],['2.4','Hold the 30/60/90 reviews','33']]],
+ ['A3','Offboarding','Notice to Day +30','Self-Service · Payroll',[['3.1','Open the clearance checklist','111'],['3.2','Run the knowledge handover','33'],['3.3','Hold the exit interview','32'],['3.4','Close out final pay and paperwork','1']]],
+ ['A4','Career Pathing','Yearly, weeks 1-4','Learning · Succession',[['4.1','Place the employee on the Career Lattice','13'],['4.2','Define next-role options','2'],['4.3','Hold the career conversation','33'],['4.4','Flag successor-track employees','21']]],
+ ['A5','Competency Profiling','Weeks 1-5','Performance',[['5.1','Build the role competency profile','33'],['5.2','Run the two-way assessment','3'],['5.3','Calibrate the ratings','33'],['5.4','Record the profile in HRIS','1']]],
+ ['A6','Gap Assessment & Intervention','Weeks 6-8, re-assess Day 90','Learning',[['6.1','Compute the gaps','12'],['6.2','Prioritize what to close first','33'],['6.3','Assign interventions','33'],['6.4','Build the IDP','3'],['6.5','Re-assess at Day 90','33']]],
+ ['A7','EOS Rocks Alignment','Quarterly, weekly L10','Performance · Overview',[['7.1','Cascade company Rocks to each SBU and department','33'],['7.2','Align individual Rocks to department Rocks','33'],['7.3','Review Rocks weekly at L10','13'],['7.4','Close the quarter and roll Rocks over','333']]],
+ ['A8','Movement & Promotions','As needed','Performance · Total Rewards',[['8.1','Open a movement request with a business case','12'],['8.2','Test readiness against evidence','33'],['8.3','Run the compensation and band check','3'],['8.4','Approve, paper, and announce the move','1'],['8.5','Hold the 90-day post-move review','3']]],
+ ['A9','Performance Improvement Plan','30 / 60 / 90 days per case','Labor Relations',[['9.1','Document the performance gap with evidence','333'],['9.2','Hold the PIP kickoff meeting','33'],['9.3','Run weekly coaching check-ins','33'],['9.4','Hold the midpoint review','33'],['9.5','Make the closing decision with due process checked','33']]],
+ ['A10','Benefits Administration','Monthly, plus annual review','Payroll · Total Rewards',[['10.1','Remit statutory contributions and taxes on time','11'],['10.2','Keep HMO and insurance enrollment current','1'],['10.3','Reconcile leave credits and loan deductions','11'],['10.4','Run the annual benefits review','33']]],
+ ['A11','Employee Engagement','Per activity, at least quarterly','Engagement',[['11.1','Start from the problem, not the party','2'],['11.2','Plan the activity and cover operations','33'],['11.3','Run it with a facilitator and a debrief','33'],['11.4','Measure and follow up','23']]],
+ ['A12','CSR','Quarterly activity, annual report','CSR',[['12.1','Choose the cause and partner','33'],['12.2','Set the budget, volunteer plan, and approvals','3'],['12.3','Run the activity and keep the record','1'],['12.4','Report the impact','23']]],
+ ['A13','Wellness Program','Annual calendar, monthly review','Engagement',[['13.1','Set the baseline from aggregate data only','233'],['13.2','Build the wellness calendar','32'],['13.3','Set up the support and escalation path','3'],['13.4','Target the high-risk groups','33'],['13.5','Measure and adjust','13']]]];
+const EFFS={plan:'Not in POS yet',build:'In build',live:'Live in POS'};
+function effRows(){
+  db.eff=db.eff||{};
+  return EFF.map(a=>{const tg=[].concat(...a[4].map(t=>t[2].split('').map(Number))),c=[0,0,0,0];tg.forEach(x=>c[x]++);
+    const n=tg.length,hum=c[3],cut=n-hum,noHumanTask=a[4].filter(t=>!t[2].includes('3')).length;
+    return {id:a[0],name:a[1],cyc:a[2],mod:a[3],tasks:a[4],n,c,hum,cut,pct:n?Math.round(cut/n*100):0,noHumanTask,st:db.eff[a[0]]||'plan'}});
+}
+function effStats(){
+  const R=effRows(),n=R.reduce((t,r)=>t+r.n,0),hum=R.reduce((t,r)=>t+r.hum,0),cut=n-hum;
+  const live=R.filter(r=>r.st==='live').reduce((t,r)=>t+r.cut,0),build=R.filter(r=>r.st==='build').reduce((t,r)=>t+r.cut,0);
+  return {R,n,hum,cut,pct:n?Math.round(cut/n*100):0,live,build,livePct:cut?Math.round(live/cut*100):0};
+}
+const effSq=(s,sz)=>s.split('').map(x=>`<i style="display:inline-block;width:${sz}px;height:${sz}px;border-radius:2px;margin:0 2px 2px 0;background:${EFFT[x][1]}" title="${EFFT[x][0]}"></i>`).join('');
+function viewEff(){
+  const X=effStats(),edit=has('hr','chro');
+  let h=head('eff');
+  const T=[[X.pct+'%','Fewer steps if the tags hold',X.cut+' of '+X.n+' steps across 13 activities'],[X.hum,'Steps that stay human','judgment, trust, approval'],[X.live,'Steps removed and live in POS',X.livePct+'% of the '+X.cut+' on the table'],[X.build,'Steps removed, in build','']];
+  h+=`<section class="tiles">${T.map(t=>`<div class="tile"><div class="n">${esc(t[0])}</div><div class="l">${esc(t[1])}</div>${t[2]?`<div class="small muted">${esc(t[2])}</div>`:''}</div>`).join('')}</section>`;
+  const weak=[];
+  X.R.filter(r=>r.hum===0).forEach(r=>weak.push(`${r.name}: all ${r.n} steps tagged away. No human step left for approval or exceptions.`));
+  X.R.filter(r=>r.pct===0).forEach(r=>weak.push(`${r.name}: 0% cut. Correct for due process, but then it is not a productivity gain.`));
+  X.R.filter(r=>r.id==='A10').forEach(r=>weak.push(`${r.name}: ${r.pct}% cut, and statutory remittances (10.1) are fully automated. Payroll sign-off and segregation of duties must stay human.`));
+  h+=`<div class="note"><b>Read this first, James.</b> This is the target-state worksheet, already lean, so ${X.pct}% is the ceiling and not the forecast. It is a proposal, not a measurement. Nothing is counted as gained until an activity is marked Live in POS.${weak.length?'<ul style="margin:6px 0 0 18px;padding:0">'+weak.map(w=>`<li>${esc(w)}</li>`).join('')+'</ul>':''}</div>`;
+  h+=`<div class="legend small muted" style="margin:8px 0">${EFFT.map(t=>`<span style="margin-right:12px"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;background:${t[1]}"></i>${t[0]}</span>`).join('')}</div>`;
+  h+=X.R.map(r=>{const open=ui.ef===r.id,sq=[].concat(...r.tasks.map(t=>t[2])).join('');
+    return `<div class="card"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:180px"><button class="btn sm" style="margin-right:6px" data-act="effo" data-id="${r.id}" aria-expanded="${open}">${open?'−':'+'}</button><b>${esc(r.id+' '+r.name)}</b><div class="small muted">${esc(r.cyc)} · ${esc(r.mod)}</div></div>
+      <div style="text-align:right"><b>${r.n} → ${r.hum}</b> <span class="small muted">steps · ${r.pct}% fewer</span></div></div>
+      <div style="margin:8px 0 4px">${effSq(sq,12)}</div>
+      <div class="row" style="gap:8px;align-items:center">${edit?`<select data-ch="effst" data-id="${r.id}" aria-label="Status">${opts(Object.entries(EFFS),r.st)}</select>`:pill(EFFS[r.st],r.st==='live'?'good':r.st==='build'?'warn':'')}${r.noHumanTask?pill(r.noHumanTask+' task'+(r.noHumanTask>1?'s':'')+' with no human step','warn'):''}</div>
+      ${open?`<div style="margin-top:8px">${r.tasks.map(t=>`<div class="row" style="justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line)"><span class="small">${esc(t[0]+' '+t[1])}</span><span style="white-space:nowrap">${effSq(t[2],12)}</span></div>`).join('')}</div>`:''}</div>`}).join('');
+  h+=`<div class="note">Source: HR Realignment, What's Left Is Human (13 HR Major Activities, step tags). Retag steps in that chart, then update the arrays here. The 115-service current-state cut (62%) is a separate, larger number and is not loaded in POS. Hours saved are not shown because no step has a time on it yet.</div>`;
   return h;
 }
 
@@ -1731,7 +1783,7 @@ function scopeCard(tab){
   const sw=`<div class="row" style="margin-bottom:8px"><span class="small muted" style="margin-right:6px">View by</span>${[['BA','BA · company'],['BU','BU · department'],['FG','FG · section']].map(([k,n])=>`<button class="btn sm ${V===k?'primary':''}" data-act="bview" data-id="${k}">${n}</button>`).join('')}</div>`;
   return `<div class="card" style="margin-bottom:12px"><h3>By ${V==='BA'?'company (BA)':V==='BU'?'department (BU)':'section (FG)'}</h3>${sw}${rows.length?table([[V==='BA'?'BA':V==='BU'?'BA › BU':'BA › BU › FG'],...cols.map(c=>[c,'r'])],rows.map(g=>`<tr><td class="wrap">${esc(g.k)}</td>${cols.map((_,i)=>`<td class="r">${cell(g,i)}</td>`).join('')}</tr>`).concat([`<tr><td><b>Total</b></td>${cols.map((_,i)=>`<td class="r"><b>${fm[i]==='avg'?'':fm[i]==='$'?esc(money(tot[i])):Math.round(tot[i]*10)/10}</b></td>`).join('')}</tr>`])):'<p class="muted small">Nothing to group yet.</p>'}${minN?'<p class="small muted">Pulse results show only for groups of '+minN+' or more responses, so nobody can be picked out.</p>':''}</div>`;
 }
-const VIEWS={sal:viewSal,gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,succ:viewSucc,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
+const VIEWS={sal:viewSal,gl:viewGl,pm:viewPm,scm:viewScm,bud:viewBud,kpi:viewKpi,succ:viewSucc,eff:viewEff,dash:viewDash,pay:viewPay,ats:viewAts,lms:viewLms,perf:viewPerf,eng:viewEng,csr:viewCsr,tr:viewTr,ess:viewEss,lr:viewLr,audit:viewAudit,adm:viewAdm};
 function render(){
   const y=window.scrollY,allowed=ACCESS[role()];
   if(!allowed.includes(ui.tab))ui.tab='dash';
@@ -1886,6 +1938,7 @@ const A={
  bclear:()=>{db.bud.manual=db.bud.manual.filter(m=>!m.base);db.bud.sample=false;log('Budget','Cleared sample actuals');save();toast('Sample actuals cleared. Budgets stay until you set the real ones.')},
  addspend:()=>{const a=+$('#sa').value;if(!(a>0)){toast('Enter an amount');return}db.bud.manual.push({id:'m'+Date.now(),co:$('#sc').value,line:$('#sl').value,amt:a,note:$('#sn').value||'-',ts:todayS(),by:pname()});log('Budget','Logged '+peso(a)+' to '+$('#sc').value+' · '+$('#sl').value);save();render()},
 
+ effo:d=>{ui.ef=ui.ef===d.id?null:d.id;render()},
  succc:d=>{ui.sc=d.id;render()},
  succf:d=>{ui.sf=d.id;render()},
  succdel:d=>{if(!has('hr','chro'))return;db.succ=db.succ||{};db.succ[d.seat]=(db.succ[d.seat]||[]).filter(x=>x.id!==d.id);log('Succession','Removed successor '+(emp(d.id)||{}).name+' from '+(emp(d.seat)||{}).name);save();render()},
@@ -2012,6 +2065,7 @@ const C={
  persona:v=>{ui.persona=v;ui.tr=null;render()},
  att:(v,d)=>{db.att[d.id][d.f]=Math.max(0,+v||0);save();render()},
  rock:(v,d)=>{db.rocks.find(r=>r.id===d.id).pct=Math.max(0,Math.min(100,+v||0));save();render()},
+ effst:(v,d)=>{if(!has('hr','chro')||!EFFS[v])return;db.eff=db.eff||{};db.eff[d.id]=v;log('Efficiency','Set '+d.id+' to '+EFFS[v]);save();render()},
  succadd:(v,d)=>{if(!v||!has('hr','chro'))return;db.succ=db.succ||{};const l=db.succ[d.seat]=db.succ[d.seat]||[];if(l.length>=3||l.some(x=>x.id===v))return;l.push({id:v,ready:'3',idp:'none'});log('Succession','Named '+(emp(v)||{}).name+' successor for '+(emp(d.seat)||{}).name);save();render()},
  sready:(v,d)=>{const x=((db.succ||{})[d.seat]||[]).find(x=>x.id===d.id);if(!x||!has('hr','chro'))return;x.ready=v;save();render()},
  sidp:(v,d)=>{const x=((db.succ||{})[d.seat]||[]).find(x=>x.id===d.id);if(!x||!has('hr','chro'))return;x.idp=v;save();render()},
