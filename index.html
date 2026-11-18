@@ -286,6 +286,10 @@ const TEAMS={
  EE:{full:'EE · Employee Engagement',s4:{label:'Engagement feedback score (1-5)',kind:'score',dir:'higher',target:4.2,unit:''}}};
 const GOALS={G1:'Stronger cash position for Construction & Manufacturing',G2:'Succession plan in place',G3:'Productivity and process efficiencies gained',G4:'Stronger partnerships and joint ventures'};
 const KT={I1:.95,I2:.98,B1:.95,B2:.98,B3:1,B4:4.3};
+/* Milestone services: one entry per annual/seasonal cycle (due date vs done date), not monthly volume */
+const MSN=new Set(['Semi-Annual / Annual Performance Appraisal','Analyze L&D Portfolio & Feed Next Cycle','Measure Workplace Application','Review Performance / Business Impact','13th Month Pay','Company Leave Credits Resetting','Group Insurance Enrollment','AMPE','Monthly and Annual Reporting','Wellness Activities','Random Drug Test','Acquiring New Retainer Physician / Facility / Laboratory','Loyalty Awarding (10 years)','Loyalty Awarding (20 years)','Loyalty Awarding (25 years)','Departmental Outing','Wellness Subsidy']);
+const msPts=c=>!c.done?null:(c.done<=c.due||c.fl==='ext')?(c.fl==='rw'?3:5):1;
+const msDays=c=>Math.round((new Date(c.due+'T00:00:00')-TODAY)/864e5);
 const SVC=[
 ['TAT','G1',0,'Talent Sourcing','Within 3 working days (posting and connecting to sources)'],
 ['TAT','G1',0,'Screening & Shortlisting','100 applications within 2 working days, incl. scheduling initial interview'],
@@ -403,7 +407,7 @@ const SVC=[
 ['EE','G4',0,'Continuous Improvement of Engagement Program','11-30 days'],
 ['EE','G4',0,'Engagement Needs / Next Activity Planning','11-30 days'],
 ['EE','G4',0,'Telco','15 days'],['EE','G4',0,'Departmental Outing','30 days'],['EE','G4',0,'Loyalty Awarding (10 years)','Planned a year ahead of the anniversary'],['EE','G4',0,'Loyalty Awarding (20 years)','Planned a year ahead of the anniversary'],['EE','G4',0,'Loyalty Awarding (25 years)','Planned a year ahead of the anniversary'],['EE','G4',0,'Wellness Subsidy','15 days'],['EE','G4',0,'Flowers for the Deceased','3 days'],['EE','G4',0,'Meals during Meeting','5 days'],['EE','G4',0,'Everybody Has','30 days'],['EE','G4',0,'Client Giveaways','30 days'],['EE','G4',0,'External Solicitations','15 days']
-].map((r,i)=>({id:'s'+String(i+1).padStart(3,'0'),team:r[0],goal:r[1],prop:!!r[2],name:r[3],tat:r[4]}));
+].map((r,i)=>({id:'s'+String(i+1).padStart(3,'0'),team:r[0],goal:r[1],prop:!!r[2],name:r[3],tat:r[4],ms:MSN.has(r[3])}));
 const LINES=[{k:'wages',n:'Salaries & wages'},{k:'ot',n:'Overtime'},{k:'er',n:'Employer SSS, PhilHealth, Pag-IBIG'},{k:'thirteenth',n:'13th month accrual'},{k:'benefits',n:'Benefits (HMO, insurance)'},{k:'recruit',n:'Recruitment'},{k:'training',n:'Training & development'},{k:'engage',n:'Engagement'},{k:'csr',n:'CSR'},{k:'merit',n:'Merit and promotion reserve'},{k:'materials',n:'Materials & supplies (Supply Chain)'}];
 const PERSONAS_DEMO=[
  {id:'p-emp',label:'Employee · Maria Santos',role:'employee',emp:'e3'},
@@ -879,11 +883,15 @@ function kcalc(){
   const K=db.kpi,T={},G={},O={};
   Object.keys(TEAMS).forEach(t=>T[t]={n:0,agreed:0,logged:0,closed:0,ontime:0,ftr:0});
   Object.keys(GOALS).forEach(g=>G[g]={n:0,closed:0,ontime:0});
-  SVC.forEach(s=>{const b=T[s.team],l=K.logs[s.id],g=G[s.goal],ow=K.owner[s.id];b.n++;if(!s.prop)b.agreed++;g.n++;
+  SVC.forEach(s=>{const b=T[s.team],l=s.ms?null:K.logs[s.id],g=G[s.goal],ow=K.owner[s.id];b.n++;if(!s.prop)b.agreed++;g.n++;
     const own=(K.own2&&K.own2[s.id]&&K.own2[s.id].length)?K.own2[s.id].map(x=>x.n):(ow?[ow]:[]);const os=own.map(n=>{const o=O[n]||(O[n]={n:0,agreed:0,closed:0,ontime:0,ftr:0,teams:{}});o.n++;if(!s.prop)o.agreed++;o.teams[s.team]=1;return o});
+    if(s.ms){const cy=((K.mile&&K.mile[s.id])||[]).filter(c=>c.done);if(cy.length){b.logged++;
+      cy.forEach(c=>{const pt=msPts(c),on=pt>=3?1:0,fr=c.fl==='rw'?0:on,n=c.o||'_';b.closed++;b.ontime+=on;b.ftr+=fr;g.closed++;g.ontime+=on;
+        const oi=own.indexOf(n),o=oi>=0?os[oi]:(os[0]&&own.length===1?os[0]:null);
+        if(o){const gg=(o.g=o.g||{})[s.goal]=(o.g[s.goal]||{closed:0,ontime:0,ftr:0});const m=gg.ms=gg.ms||{n:0,pts:0,sv:{}};m.n++;m.pts+=pt;m.sv[s.id]=1}})}}
     if(l){b.logged++;b.closed+=l.closed;b.ontime+=l.ontime;b.ftr+=l.ftr;g.closed+=l.closed;g.ontime+=l.ontime;const ol=K.olog&&K.olog[s.id];
       own.forEach((n,i)=>{const o=os[i];let e=l;if(ol&&ol[n]){const q=ol[n];e={closed:q.closed,ontime:Math.min(q.closed,q.ontime+(q.ext||0)),ftr:q.ftr}}else if(ol&&own.length>1)return;
-       o.closed+=e.closed;o.ontime+=e.ontime;o.ftr+=e.ftr;const gg=(o.g=o.g||{})[s.goal]=(o.g[s.goal]||{closed:0,ontime:0,ftr:0});gg.closed+=e.closed;gg.ontime+=e.ontime;gg.ftr+=e.ftr})}});
+       o.closed+=e.closed;o.ontime+=e.ontime;o.ftr+=e.ftr;const gg=(o.g=o.g||{})[s.goal]=(o.g[s.goal]||{closed:0,ontime:0,ftr:0});gg.closed+=e.closed;gg.ontime+=e.ontime;gg.ftr+=e.ftr;gg.sv=(gg.sv||0)+1})}});
   Object.keys(T).forEach(t=>{const b=T[t],d=TEAMS[t].s4;b.S1=b.closed?b.ontime/b.closed:null;b.S2=b.closed?b.ftr/b.closed:null;b.S3=b.agreed/b.n;
     b.s4v=K.s4[t]==null?null:K.s4[t];b.S4=ach(b.s4v,d.target,d.dir);
     b.score=wavg([[ach(b.S1,KT.I1),K.w.S1],[ach(b.S2,KT.I2),K.w.S2],[b.S3,K.w.S3],[b.S4,K.w.S4]])});
@@ -935,7 +943,7 @@ function kTeam(X){
    <span>Target <b>${esc(s4fmt(t,d.target))}</b> · ${d.dir==='lower'?'lower is better':'higher is better'}</span>${b.S4==null?pill('No data'):pill('Achievement '+pc(b.S4),b.S4>=1?'good':b.S4>=.9?'warn':'bad')}</div></div>`;
   h+=`<div class="card"><h3>${esc(TEAMS[t].full)} · services (${b.n})</h3><p class="small muted">Enter three numbers per service each month: cases closed, closed within TAT, closed first-time-right. Log by the 3rd working day.</p>`+
    table([['Service'],['Goal'],['TAT'],['Owner'],['Closed','r'],['Within TAT','r'],['First-time-right','r'],['Late, caused by others','r'],['I1','r'],['I2','r']],
-   SVC.filter(s=>s.team===t).map(s=>{const l=K.logs[s.id],ow=K.owner[s.id],names=ownNames(s),keys=names.length?names:['_'],ol=(K.olog&&K.olog[s.id])||{};
+   SVC.filter(s=>s.team===t).map(s=>{if(s.ms)return kMsRow(s);const l=K.logs[s.id],ow=K.owner[s.id],names=ownNames(s),keys=names.length?names:['_'],ol=(K.olog&&K.olog[s.id])||{};
      const own2=(K.own2&&K.own2[s.id])||[];
      const cell=f=>`<td class="r">${keys.map(n=>{const ok=canLogO(s,n),e=ol[n]||(keys.length===1&&!Object.keys(ol).length&&l?{closed:l.closed,ontime:l.ontime,ftr:l.ftr,ext:0}:null),aff=(own2.find(o=>o.n===n)||{a:[]}).a.filter(x=>x!=='ALL').join(', ');
        return `<div style="margin-bottom:4px">${keys.length>1?`<div class="small muted">${esc(n)}${aff?' · '+esc(aff):''}</div>`:''}<input type="number" min="0" step="1" value="${e&&e[f]!=null?e[f]:''}" data-ch="kolog" data-id="${s.id}" data-o="${esc(n)}" data-f="${f}" ${ok?'':'disabled'} aria-label="${f} for ${esc(s.name)} ${esc(n)}"></div>`}).join('')}</td>`;
@@ -943,6 +951,15 @@ function kTeam(X){
      <td class="wrap">${ow?esc(ownTxt(s.id,ow))+(canClaim(s)?` <button class="btn sm" data-act="kunown" data-id="${s.id}" aria-label="Clear owner">×</button>`:''):(canClaim(s)?`<button class="btn sm" data-act="kclaim" data-id="${s.id}">Make me owner</button>`:'<span class="muted">No owner yet</span>')}</td>
      ${cell('closed')}${cell('ontime')}${cell('ftr')}${cell('ext')}<td class="r mono">${l&&l.closed?pc(l.ontime/l.closed):'–'}</td><td class="r mono">${l&&l.closed?pc(l.ftr/l.closed):'–'}</td></tr>`}))+`<p class="small muted">Each owner enters only their own line. "Late, caused by others" counts cases that missed TAT because an insurer, approver or another department held them. They are scored as on time, but the count shows here and in Section 1 for the supervisor to check.</p></div>`;
   return h;
+}
+function kMsRow(s){
+  const K=db.kpi,ow=K.owner[s.id],cy=(K.mile&&K.mile[s.id])||[],names=ownNames(s),can=canLog(s);
+  const cyc=cy.map((c,i)=>{const ok=canLogO(s,c.o||'_'),pt=msPts(c),d=msDays(c);
+    const st=c.done?(pt>=3?pill(c.fl==='ext'&&c.done>c.due?'On time (late by others)':'On time','good'):pill('Late','bad')):(d<0?pill('Overdue '+(-d)+'d','bad'):d<=14?pill('Due in '+d+'d','warn'):pill('Due in '+d+'d'));
+    return `<div style="margin:4px 0;padding:6px;border:1px solid var(--line,#ddd);border-radius:8px"><div class="row" style="gap:6px;align-items:end"><label class="f">Cycle<input type="text" value="${esc(c.c||'')}" data-ch="kmile" data-id="${s.id}" data-i="${i}" data-f="c" ${ok?'':'disabled'}></label><label class="f">Due<input type="date" value="${esc(c.due||'')}" data-ch="kmile" data-id="${s.id}" data-i="${i}" data-f="due" ${ok?'':'disabled'}></label><label class="f">Done<input type="date" value="${esc(c.done||'')}" data-ch="kmile" data-id="${s.id}" data-i="${i}" data-f="done" ${ok?'':'disabled'}></label><label class="f">Flag<select data-ch="kmile" data-id="${s.id}" data-i="${i}" data-f="fl" ${ok?'':'disabled'}><option value="" ${!c.fl?'selected':''}>None</option><option value="rw" ${c.fl==='rw'?'selected':''}>Reworked</option><option value="ext" ${c.fl==='ext'?'selected':''}>Late, caused by others</option></select></label>${st}${c.o&&c.o!=='_'?`<span class="small muted">${esc(c.o)}</span>`:''}${ok?`<button class="btn sm" data-act="kmdel" data-id="${s.id}" data-i="${i}" aria-label="Remove cycle">×</button>`:''}</div></div>`}).join('');
+  return `<tr><td class="wrap"><b>${esc(s.name)}</b> ${pill('Milestone')}</td><td>${s.goal}</td><td class="wrap small">${esc(s.tat)} ${s.prop?pill('proposed','warn'):''}</td>
+   <td class="wrap">${ow?esc(ownTxt(s.id,ow)):(canClaim(s)?`<button class="btn sm" data-act="kclaim" data-id="${s.id}">Make me owner</button>`:'<span class="muted">No owner yet</span>')}</td>
+   <td colspan="6" class="wrap">${cyc||'<span class="small muted">No cycle set up yet.</span>'}${can?`<div><button class="btn sm" data-act="kmadd" data-id="${s.id}">+ Add cycle</button></div>`:''}</td></tr>`;
 }
 function kInd(X){
   const K=db.kpi,mine=pname();
@@ -957,14 +974,19 @@ function kInd(X){
 function kS1(X){
   const K=db.kpi,mine=pname(),minv=MINV(),w1=+K.w.S1||0,w2=+K.w.S2||0,ws=(w1+w2)||1;
   const owners=Object.keys(X.O).filter(o=>has('hr','chro')||(myTeam()&&X.O[o].teams[myTeam()])||fnm(o)===fnm(mine));
-  const csv=[['Owner','Goal','Closed','On time (incl. late by others)','Right first time','I1','I2','Achievement','Rating 1-5']];
+  const csv=[['Owner','Goal','Closed','On time (incl. late by others)','Right first time','I1','I2','Achievement','Rating 1-5','Milestones']];
   let body='';
   owners.forEach(o=>{const x=X.O[o],g=x.g||{};let sw=0,sr=0;
     Object.keys(GOALS).forEach(k=>{const e=g[k];if(!e)return;
-      const ok=e.closed>=minv,i1=e.closed?e.ontime/e.closed:null,i2=e.closed?e.ftr/e.closed:null,a=ok?(w1*ach(i1,KT.I1)+w2*ach(i2,KT.I2))/ws:null,r=ok?rate5(a):null;
-      if(ok){sw+=e.closed;sr+=e.closed*r}
-      body+=`<tr><td>${esc(o)}${fnm(o)===fnm(mine)?' '+pill('you','good'):''}</td><td class="wrap"><b>${k}</b> ${esc(GOALS[k])}</td><td class="r">${e.closed}</td><td class="r">${ragp(i1,KT.I1)}</td><td class="r">${ragp(i2,KT.I2)}</td><td class="r">${ok?pc(a):'–'}</td><td class="r">${ok?`<b>${r}</b>`:pill('Under '+minv+' closed','warn')}</td></tr>`;
-      csv.push([o,k,e.closed,e.ontime,e.ftr,i1==null?'':(i1*100).toFixed(1)+'%',i2==null?'':(i2*100).toFixed(1)+'%',ok?(a*100).toFixed(1)+'%':'',ok?r:'Not enough volume']);});
+      const m=e.ms,mn=m?m.n:0,mavg=mn?m.pts/mn:null,msv=m?Object.keys(m.sv).length:0;
+      const okm=e.closed>=minv,i1m=e.closed?e.ontime/e.closed:null,i2m=e.closed?e.ftr/e.closed:null,am=okm?(w1*ach(i1m,KT.I1)+w2*ach(i2m,KT.I2))/ws:null,rm=okm?rate5(am):null;
+      const parts=[];if(okm)parts.push([rm,e.sv||1]);if(mn)parts.push([mavg,msv]);
+      const rr=parts.length?parts.reduce((s,x)=>s+x[0]*x[1],0)/parts.reduce((s,x)=>s+x[1],0):null;
+      const ok=rr!=null,i1=i1m,i2=i2m,a=am,r=ok?Math.round(rr*100)/100:null;
+      if(ok){sw+=(e.closed+mn)||1;sr+=((e.closed+mn)||1)*r}
+      const mtxt=mn?` <span class="small muted">+ ${mn} milestone cycle${mn>1?'s':''}, avg ${mavg.toFixed(1)}/5</span>`:'';
+      body+=`<tr><td>${esc(o)}${fnm(o)===fnm(mine)?' '+pill('you','good'):''}</td><td class="wrap"><b>${k}</b> ${esc(GOALS[k])}${mtxt}</td><td class="r">${e.closed}</td><td class="r">${ragp(i1,KT.I1)}</td><td class="r">${ragp(i2,KT.I2)}</td><td class="r">${okm?pc(a):'–'}</td><td class="r">${ok?`<b>${r}</b>`:pill('Under '+minv+' closed','warn')}</td></tr>`;
+      csv.push([o,k,e.closed,e.ontime,e.ftr,i1==null?'':(i1*100).toFixed(1)+'%',i2==null?'':(i2*100).toFixed(1)+'%',okm?(a*100).toFixed(1)+'%':'',ok?r:'Not enough volume',mn+' milestone cycles']);});
     const unr=Object.keys(GOALS).filter(k=>!g[k]);
     body+=`<tr><td><b>${esc(o)}</b></td><td class="wrap"><b>Section 1 overall</b> <span class="small muted">no services on: ${unr.length?unr.join(', '):'none'} (N/A, not zero)</span></td><td></td><td></td><td></td><td></td><td class="r mono"><b>${sw?(sr/sw).toFixed(2):'–'}</b></td></tr>`;
     csv.push([o,'Section 1 overall','','','','','','',sw?(sr/sw).toFixed(2):'']);});
@@ -1617,6 +1639,9 @@ const A={
 
  ktab:d=>{ui.kt=d.id;render()},
  kteam:d=>{ui.kteam=d.id;render()},
+ kmadd:d=>{const sv=SVC.find(x=>x.id===d.id);if(!sv||!canLog(sv))return;const K=db.kpi;K.mile=K.mile||{};const a=K.mile[d.id]||(K.mile[d.id]=[]);const nm=ownNames(sv),me1=nm.find(n=>isOwnerOf(sv,n));
+   a.push({c:'Cycle '+(a.length+1),due:'',done:'',fl:'',o:me1||nm[0]||'_'});log('HR KPI','Added cycle to '+sv.name);save();render()},
+ kmdel:d=>{const sv=SVC.find(x=>x.id===d.id),a=db.kpi.mile&&db.kpi.mile[d.id];if(!sv||!a||!a[+d.i]||!canLogO(sv,a[+d.i].o||'_'))return;a.splice(+d.i,1);log('HR KPI','Removed cycle from '+sv.name);save();render()},
  kclaim:d=>{const s=SVC.find(x=>x.id===d.id);if(!canClaim(s))return;db.kpi.owner[d.id]=pname();log('HR KPI',pname()+' claimed '+s.name);save();render()},
  kunown:d=>{const s=SVC.find(x=>x.id===d.id);if(!canClaim(s))return;delete db.kpi.owner[d.id];log('HR KPI','Cleared owner of '+s.name);save();render()},
  kclear:()=>{db.kpi.logs={};db.kpi.olog={};db.kpi.owner={};db.kpi.s4={};db.kpi.b4=null;db.kpi.sample=false;log('HR KPI','Cleared sample data');save();toast('Sample data cleared. Ready for real logs.')},
@@ -1726,6 +1751,7 @@ const C={
    if((d.f==='ontime'||d.f==='ext')&&e.ontime+(e.ext||0)>e.closed){if(d.f==='ext')e.ext=e.closed-e.ontime;else e.ext=e.closed-e.ontime}
    resum(d.id);log('HR KPI',sv.name+(d.o!=='_'?' ['+d.o+']':'')+': '+e.closed+' closed, '+e.ontime+' on time, '+e.ftr+' first-time-right, '+(e.ext||0)+' late by others');save();render()},
  ks4:(v,d)=>{if(!(has('hr','chro')||(has('hrsup')&&me().team===d.t)))return;const k=TEAMS[d.t].s4.kind;db.kpi.s4[d.t]=v===''?null:(k==='pct'?+v/100:+v);log('HR KPI','S4 for '+d.t+' set to '+v);save();render()},
+ kmile:(v,d)=>{const sv=SVC.find(x=>x.id===d.id),a=db.kpi.mile&&db.kpi.mile[d.id],c=a&&a[+d.i];if(!sv||!c||!canLogO(sv,c.o||'_'))return;c[d.f]=v;log('HR KPI',sv.name+' · '+(c.c||'cycle')+': '+d.f+' = '+(v||'cleared'));save();render()},
  kminv:v=>{if(!has('hr','chro'))return;db.kpi.minv=Math.max(1,Math.floor(+v||10));save();render()},
  kw:(v,d)=>{db.kpi.w[d.k]=Math.max(0,+v||0);save();render()},
  ktw:(v,d)=>{db.kpi.tw[d.k]=Math.max(0,+v||0);save();render()},
