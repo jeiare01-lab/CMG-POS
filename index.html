@@ -965,9 +965,11 @@ ui.kt='los';ui.kteam='TAT';
 function viewKpi(){
   const K=db.kpi,X=kcalc(),B=X.B;
   if(myTeam())ui.kteam=myTeam();
+  const DMON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const subs=[['los','Line of sight'],['bu','Business unit'],['team','Team'],['ind','Individual'],['s1','Section 1 by goal'],['rules','Definitions']].filter(s=>!(myTeam()&&s[0]==='bu'&&false));
   let h=head('kpi',`<div class="row">${subs.map(s=>`<button class="btn sm ${ui.kt===s[0]?'primary':''}" data-act="ktab" data-id="${s[0]}">${s[1]}</button>`).join('')}</div>`);
   if(K.sample)h+=`<div class="note"><b>Sample numbers.</b> The 115 services, TATs, goal tags and targets are yours. The monthly counts, owners and S4 values below are illustrative so the roll-up has something to show. ${has('hr','chro')?`<button class="btn sm" data-act="kclear">Clear sample data</button>`:'HR clears them before the first real month.'}</div>`;
+  if(window.ENT)h+=`<div class="row" style="margin-bottom:14px"><label class="f">Period<select data-ch="kper"><option value="YTD" ${(ui.kper||'YTD')==='YTD'?'selected':''}>Year to date</option>${DMON.map((m,i)=>{const p='2026-'+String(i+1).padStart(2,'0');return `<option value="${p}" ${ui.kper===p?'selected':''}>${m} 2026</option>`}).join('')}</select></label><span class="small muted">Numbers come from the supervisors' entries.</span></div>`;
   if(ui.kt==='los')h+=kLos(X);else if(ui.kt==='bu')h+=kBu(X);else if(ui.kt==='team')h+=kTeam(X);else if(ui.kt==='ind')h+=kInd(X);else if(ui.kt==='s1')h+=kS1(X);else h+=kRules();
   return h;
 }
@@ -1009,6 +1011,21 @@ function kLos(X){
   h+=`<div class="card"><h3>Team heat map</h3>${table([['Team'],['Services','r'],['Reporting','r'],['On track','r'],['Health','r']],Object.keys(TEAMS).map(t=>{const o=byT[t],r2=o.good+o.warn+o.bad,v=r2?o.good/r2:null;
     return `<tr><td class="wrap"><b>${esc(TEAMS[t].full)}</b></td><td class="r">${o.n}</td><td class="r">${r2}</td><td class="r">${o.good} / ${r2}</td><td class="r">${v==null?pill('No data'):pill(pc(v),cls(v))}</td></tr>`}))}</div>`;
   return h;
+}
+function applyEntries(){
+ const E=window.ENT;if(!E||!db.kpi)return;const K=db.kpi,per=ui.kper||'YTD';
+ const cnt={},idm={};SVC.forEach(s=>{const n=(cnt[s.team]=(cnt[s.team]||0)+1);idm[s.team+'-'+String(n).padStart(2,'0')]=s.id});
+ K.olog=K.olog||{};K.mile=K.mile||{};K.logs=K.logs||{};const touched={},tm={};
+ E.e.filter(r=>per==='YTD'||r.period===per).forEach(r=>{const sid=idm[r.service_id];if(!sid)return;const n=r.owner_emp?(E.nm[r.owner_emp]||'_'):'_';
+  if(!touched[sid]){touched[sid]=1;K.olog[sid]={}}
+  const o=K.olog[sid][n]||(K.olog[sid][n]={closed:0,ontime:0,ftr:0,ext:0});o.closed+=r.closed;o.ontime+=r.within_tat;o.ftr+=r.first_time_right;o.ext+=r.late_external});
+ Object.keys(K.entIds||{}).forEach(sid=>{if(!touched[sid]){delete K.olog[sid];delete K.logs[sid]}});
+ Object.keys(touched).forEach(sid=>resum(sid));K.entIds=touched;
+ Object.keys(K.entMs||{}).forEach(sid=>delete K.mile[sid]);const em={};
+ E.m.forEach(r=>{const sid=idm[r.service_id];if(!sid)return;if(per!=='YTD'&&!(r.due&&r.due.slice(0,7)===per))return;
+  (K.mile[sid]=K.mile[sid]||[]).push({c:r.cycle||'',due:r.due||'',done:r.done||'',fl:r.flag||'',o:r.owner_emp?(E.nm[r.owner_emp]||'_'):'_'});em[sid]=1});K.entMs=em;
+ K.s4=K.s4||{};const last={};E.o.filter(r=>per==='YTD'||r.period===per).forEach(r=>{if(!last[r.team]||r.period>last[r.team].period)last[r.team]=r});
+ Object.keys(last).forEach(t=>{K.s4[t]=+last[t].value});
 }
 function kBu(X){
   const B=X.B,K=db.kpi,nolog=SVC.filter(s=>!K.logs[s.id]).length,noown=SVC.filter(s=>!K.owner[s.id]).length,prop=SVC.filter(s=>s.prop).length;
@@ -1842,6 +1859,7 @@ const C={
    resum(d.id);log('HR KPI',sv.name+(d.o!=='_'?' ['+d.o+']':'')+': '+e.closed+' closed, '+e.ontime+' on time, '+e.ftr+' first-time-right, '+(e.ext||0)+' late by others');save();render()},
  ks4:(v,d)=>{if(!(has('hr','chro')||(has('hrsup')&&me().team===d.t)))return;const k=TEAMS[d.t].s4.kind;db.kpi.s4[d.t]=v===''?null:(k==='pct'?+v/100:+v);log('HR KPI','S4 for '+d.t+' set to '+v);save();render()},
  kmile:(v,d)=>{const sv=SVC.find(x=>x.id===d.id),a=db.kpi.mile&&db.kpi.mile[d.id],c=a&&a[+d.i];if(!sv||!c||!canLogO(sv,c.o||'_'))return;c[d.f]=v;log('HR KPI',sv.name+' · '+(c.c||'cycle')+': '+d.f+' = '+(v||'cleared'));save();render()},
+ kper:v=>{ui.kper=v;applyEntries();render()},
  kminv:v=>{if(!has('hr','chro'))return;db.kpi.minv=Math.max(1,Math.floor(+v||10));save();render()},
  kw:(v,d)=>{db.kpi.w[d.k]=Math.max(0,+v||0);save();render()},
  ktw:(v,d)=>{db.kpi.tw[d.k]=Math.max(0,+v||0);save();render()},
@@ -1917,6 +1935,102 @@ async function syncOwnersMcp(){
   return true;
  }catch(e){return false}
 }
+/* ---- Supervisor / owner desk: table-backed entry, no shared blob ---- */
+const DMONS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const dfmt=f=>{const s=String(f||''),k=s.indexOf(','),l=k<0?s:s.slice(0,k),fi=k<0?'':s.slice(k+1).trim().split(/\s+/)[0];const cap=x=>x.toLowerCase().replace(/(^|[\s\-'])([a-zñ])/g,(m,p,c)=>p+c.toUpperCase());return (cap(fi)+' '+cap(l.trim())).trim()};
+let D=null;
+function deskCss(){if(document.getElementById('deskcss'))return;const s=document.createElement('style');s.id='deskcss';s.textContent='#desk{position:fixed;inset:0;z-index:9998;overflow:auto;background:#0D1B3D;color:#FEF9F3;font-family:var(--body)}#desk .dw{max-width:1180px;margin:0 auto;padding:20px 16px 80px}#desk .dh{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}#desk .dx{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px 20px;margin-bottom:18px}#desk .dm{display:inline-block;padding:3px 10px;border-radius:999px;font-size:.74rem;background:rgba(255,255,255,.07);color:#B9C3DE;margin-right:6px}#desk .bad{color:#ff8a8a;font-size:.78rem}#desk .ok{color:#5fd35f;font-size:.78rem}#desk .cyc{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:8px 0;border-top:1px solid rgba(255,255,255,.09)}#desk td input[type=number]{width:74px}#desk h3{margin:0 0 10px}';document.head.appendChild(s)}
+async function deskStart(email){
+ const {data:b,error}=await sb.rpc('hr_desk_bootstrap');
+ if(error||!b||!b.me||!(b.teams||[]).length){card(`<p>Signed in as ${esc(email)}, but this account is not on an HR team yet. Ask James to add you.</p><button id="g-so" style="${bt2}">Sign out</button>`);document.getElementById('g-so').onclick=()=>sb.auth.signOut().then(()=>login());return}
+ const {data:u}=await sb.auth.getUser();const t=new Date(),y=t.getFullYear()===2026?t.getMonth()+1:12;
+ D={b,uid:u&&u.user&&u.user.id,per:'2026-'+String(y).padStart(2,'0'),team:b.teams[0].team,ent:{},mil:[],out:{},msg:{}};
+ gate().remove();deskCss();pwBtn();await deskLoad();deskDraw();
+}
+const dSup=t=>!!D.b.teams.find(x=>x.team===t&&x.is_supervisor);
+const dLines=s=>{const ow=D.b.owners.filter(o=>o.service_id===s.id),seen={},out=[];ow.forEach(o=>{const k=o.employee_id+'|'+o.affiliate;if(seen[k])return;seen[k]=1;out.push({key:o.employee_id,emp:o.employee_id,aff:o.affiliate,name:dfmt(o.full_name)})});return out.length?out:[{key:'_',emp:null,aff:'',name:''}]};
+const dCan=(t,l)=>dSup(t)||(l.emp&&l.emp===D.b.me.id);
+async function deskLoad(){
+ const ids=D.b.services.map(s=>s.id);
+ const [e,m,o]=await Promise.all([sb.from('hr_kpi_entry').select('*').eq('period',D.per).in('service_id',ids),sb.from('hr_milestone').select('*').in('service_id',ids).order('id'),sb.from('hr_team_outcome').select('team,period,value').eq('period',D.per)]);
+ D.ent={};(e.data||[]).forEach(r=>D.ent[r.service_id+'|'+r.owner_key+'|'+r.affiliate]=r);D.mil=m.data||[];D.out={};(o.data||[]).forEach(r=>D.out[r.team]=r.value);
+}
+function deskDraw(){
+ let el=document.getElementById('desk');if(!el){el=document.createElement('div');el.id='desk';document.body.appendChild(el)}
+ const b=D.b,t=D.team,svs=b.services.filter(s=>s.team===t),mon=svs.filter(s=>!MSN.has(s.name)),ms=svs.filter(s=>MSN.has(s.name));
+ let cl=0,on=0,fr=0;svs.forEach(s=>dLines(s).forEach(l=>{const r=D.ent[s.id+'|'+l.key+'|'+l.aff];if(r){cl+=r.closed;on+=Math.min(r.closed,r.within_tat+r.late_external);fr+=r.first_time_right}}));
+ const pc1=v=>cl?(v/cl*100).toFixed(1)+'%':'–';
+ const sup=b.teams.filter(x=>x.is_supervisor).map(x=>x.team);
+ let h=`<div class="dw"><div class="dh"><div><div style="font-family:var(--display);font-size:1.5rem;font-weight:600">HR KPI desk</div><div class="small muted" style="color:#B9C3DE">${esc(dfmt(b.me.full_name))} · ${sup.length?'Supervisor of '+sup.join(', '):'Service owner'}</div></div>
+  <div class="row" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">${b.teams.length>1?b.teams.map(x=>`<button class="btn sm ${x.team===t?'primary':''}" data-dk="team" data-v="${x.team}">${x.team}</button>`).join(''):`<span class="dm">${t}</span>`}
+  <select data-dk="per">${DMONS.map((m,i)=>{const p='2026-'+String(i+1).padStart(2,'0');return `<option value="${p}" ${p===D.per?'selected':''}>${m} 2026</option>`}).join('')}</select><button class="btn sm" data-dk="out">Sign out</button></div></div>
+  <div class="dx"><div class="small" style="color:#B9C3DE;margin-bottom:8px">${esc(TEAMS[t]?TEAMS[t].full:t)} · ${DMONS[+D.per.slice(5)-1]} 2026. Your entries save as you type. Leave a line blank if there were no cases.</div>
+   <span class="dm">Closed ${cl}</span><span class="dm">On time ${pc1(on)}</span><span class="dm">First-time-right ${pc1(fr)}</span></div>`;
+ if(dSup(t)&&TEAMS[t]){const d=TEAMS[t].s4,v=D.out[t],shown=v==null?'':d.kind==='pct'?+(v*100).toFixed(1):v;
+  h+=`<div class="dx"><h3>S4 · ${esc(d.label)}</h3><div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><input type="number" step="any" data-dk="s4" value="${shown}" placeholder="${d.kind==='pct'?'% result':'Result'}"><span class="small muted" style="color:#B9C3DE">Target ${esc(s4fmt(t,d.target))}</span><span id="dm-s4" class="ok"></span></div></div>`}
+ h+=`<div class="dx"><h3>Monthly services</h3><div class="scroll"><table><thead><tr><th>Service</th><th>TAT</th><th>Owner</th><th class="r">Closed</th><th class="r">Within TAT</th><th class="r">First-time-right</th><th class="r">Late, by others</th><th></th></tr></thead><tbody>`;
+ mon.forEach(s=>dLines(s).forEach(l=>{const r=D.ent[s.id+'|'+l.key+'|'+l.aff]||{},can=dCan(t,l),k=s.id+'|'+l.key+'|'+l.aff,ci=f=>`<td class="r"><input type="number" min="0" step="1" data-dk="e" data-k="${esc(k)}" data-f="${f}" value="${r[f]==null?'':r[f]}" ${can?'':'disabled'}></td>`;
+  h+=`<tr data-row="${esc(k)}"><td class="wrap"><b>${esc(s.name)}</b> <span class="small muted">${s.goal}</span></td><td class="wrap small">${esc(s.tat_text||'')}${s.tat_proposed?' <span class="dm">proposed</span>':''}</td><td class="wrap small">${esc(l.name)}${l.aff&&l.aff!=='ALL'?' ('+esc(l.aff)+')':''}</td>${ci('closed')}${ci('within_tat')}${ci('first_time_right')}${ci('late_external')}<td id="dm-${esc(k)}" class="small"></td></tr>`}));
+ h+=`</tbody></table></div><p class="small muted" style="color:#B9C3DE">Within TAT cannot exceed Closed. "Late, by others" counts cases that missed TAT because an insurer, approver or another department held them. Count them in Closed, not in Within TAT.</p></div>`;
+ if(ms.length){h+=`<div class="dx"><h3>Annual and seasonal services</h3><p class="small muted" style="color:#B9C3DE;margin-top:0">One row per cycle. Fill Done only when the cycle is finished. On time scores 5, reworked 3, late 1.</p>`;
+  ms.forEach(s=>{const lines=dLines(s),cy=D.mil.filter(c=>c.service_id===s.id),addOk=lines.some(l=>dCan(t,l));
+   h+=`<div style="margin:12px 0"><b>${esc(s.name)}</b> <span class="small muted">${s.goal} · ${esc(s.tat_text||'')}</span>`;
+   cy.forEach(c=>{const can=dSup(t)||(c.owner_emp&&c.owner_emp===D.b.me.id),dis=can?'':'disabled',ln=lines.find(l=>l.key===c.owner_key);
+    h+=`<div class="cyc"><label class="f">Cycle<input type="text" data-dk="m" data-id="${c.id}" data-f="cycle" value="${esc(c.cycle||'')}" ${dis}></label><label class="f">Due<input type="date" data-dk="m" data-id="${c.id}" data-f="due" value="${c.due||''}" ${dis}></label><label class="f">Done<input type="date" data-dk="m" data-id="${c.id}" data-f="done" value="${c.done||''}" ${dis}></label><label class="f">Flag<select data-dk="m" data-id="${c.id}" data-f="flag" ${dis}><option value="" ${!c.flag?'selected':''}>None</option><option value="rw" ${c.flag==='rw'?'selected':''}>Reworked</option><option value="ext" ${c.flag==='ext'?'selected':''}>Late, caused by others</option></select></label><span class="small muted">${ln?esc(ln.name):''}</span>${can?`<button class="btn sm" data-dk="mdel" data-id="${c.id}">×</button>`:''}<span id="dmm-${c.id}" class="small"></span></div>`});
+   h+=addOk?`<div><button class="btn sm" data-dk="madd" data-id="${s.id}">+ Add cycle</button></div>`:'';h+='</div>'});
+  h+='</div>'}
+ el.innerHTML=h+'</div>';
+}
+const dSay=(id,txt,cls)=>{const e=document.getElementById(id);if(e){e.textContent=txt;e.className=cls||'ok'}};
+async function deskSaveRow(k){
+ const [sid,key,aff]=k.split('|'),root=document.querySelector('[data-row="'+k.replace(/"/g,'\\"')+'"]');if(!root)return;
+ const g=f=>{const v=root.querySelector('[data-f="'+f+'"]').value;return v===''?null:Math.max(0,Math.floor(+v||0))};
+ const c=g('closed'),w=g('within_tat'),f=g('first_time_right'),x=g('late_external'),id='dm-'+k;
+ const old=D.ent[k];
+ if(c==null&&w==null&&f==null&&x==null){if(old){const {error}=await sb.from('hr_kpi_entry').delete().eq('service_id',sid).eq('period',D.per).eq('owner_key',key).eq('affiliate',aff);if(error)return dSay(id,error.message,'bad');delete D.ent[k]}dSay(id,'');return deskDraw()}
+ const cc=c||0,ww=w||0,ff=f||0,xx=x||0;
+ if(ww+xx>cc)return dSay(id,'Within TAT plus late-by-others is more than Closed','bad');
+ if(ff>cc)return dSay(id,'First-time-right is more than Closed','bad');
+ const lines=D.b.owners.find(o=>o.service_id===sid&&o.employee_id===key);
+ const row={service_id:sid,period:D.per,owner_key:key,owner_emp:key==='_'?null:key,affiliate:aff,closed:cc,within_tat:ww,first_time_right:ff,late_external:xx,updated_by:D.uid,updated_at:new Date().toISOString()};
+ dSay(id,'Saving…','small');
+ const {error}=await sb.from('hr_kpi_entry').upsert(row,{onConflict:'service_id,period,owner_key,affiliate'});
+ if(error)return dSay(id,error.message.slice(0,80),'bad');
+ D.ent[k]=row;dSay(id,'Saved');
+}
+async function deskClick(e){
+ const t=e.target.closest('[data-dk]');if(!t||t.tagName==='INPUT'||t.tagName==='SELECT')return;const a=t.dataset.dk;
+ if(a==='team'){D.team=t.dataset.v;deskDraw()}
+ else if(a==='out')sb.auth.signOut().then(()=>location.reload());
+ else if(a==='madd'){const s=D.b.services.find(x=>x.id===t.dataset.id),ln=dLines(s).find(l=>dCan(D.team,l))||dLines(s)[0];
+  const n=D.mil.filter(c=>c.service_id===s.id).length+1;
+  const {data,error}=await sb.from('hr_milestone').insert({service_id:s.id,cycle:'Cycle '+n,owner_key:ln.key,owner_emp:ln.emp,updated_by:D.uid}).select().single();
+  if(error)return alert(error.message);D.mil.push(data);deskDraw()}
+ else if(a==='mdel'){const id=+t.dataset.id;const {error}=await sb.from('hr_milestone').delete().eq('id',id);if(error)return alert(error.message);D.mil=D.mil.filter(c=>c.id!==id);deskDraw()}
+}
+async function deskChange(e){
+ const t=e.target.closest('[data-dk]');if(!t)return;const a=t.dataset.dk;
+ if(a==='per'){D.per=t.value;await deskLoad();deskDraw()}
+ else if(a==='e')deskSaveRow(t.dataset.k);
+ else if(a==='s4'){const d=TEAMS[D.team].s4,v=t.value===''?null:(d.kind==='pct'?+t.value/100:+t.value);
+  const q=v==null?await sb.from('hr_team_outcome').delete().eq('team',D.team).eq('period',D.per):await sb.from('hr_team_outcome').upsert({team:D.team,period:D.per,value:v},{onConflict:'team,period'});
+  q.error?dSay('dm-s4',q.error.message.slice(0,80),'bad'):(v==null?delete D.out[D.team]:D.out[D.team]=v,dSay('dm-s4','Saved'))}
+ else if(a==='m'){const id=+t.dataset.id,f=t.dataset.f,c=D.mil.find(x=>x.id===id);if(!c)return;const val=t.value===''?null:t.value;
+  const upd={[f]:f==='cycle'?(val||''):val,updated_by:D.uid,updated_at:new Date().toISOString()};
+  const {error}=await sb.from('hr_milestone').update(upd).eq('id',id);
+  if(error)return dSay('dmm-'+id,error.message.slice(0,80),'bad');Object.assign(c,upd);dSay('dmm-'+id,'Saved')}
+}
+document.addEventListener('click',e=>{if(D)deskClick(e)});document.addEventListener('change',e=>{if(D&&e.target.closest('#desk'))deskChange(e)});
+/* ---- Admin side: read the supervisors' entries into the KPI model ---- */
+async function syncEntries(){
+ try{
+  const [e,m,o]=await Promise.all([sb.from('hr_kpi_entry').select('*').limit(20000),sb.from('hr_milestone').select('*').limit(5000),sb.from('hr_team_outcome').select('team,period,value')]);
+  if(e.error||m.error)return;
+  const ids=[...new Set(e.data.map(r=>r.owner_emp).concat(m.data.map(r=>r.owner_emp)).filter(Boolean))],nm={};
+  if(ids.length){const q=await sb.from('employee').select('id,full_name').in('id',ids);(q.data||[]).forEach(x=>{const s=String(x.full_name||''),p=(s.indexOf(',')<0?s:s.split(',').pop()).trim().split(/\s+/)[0]||'';nm[x.id]=p.toLowerCase().replace(/(^|-)(\w)/g,(z,a,b)=>a+b.toUpperCase())})}
+  window.ENT={e:e.data,m:m.data,o:o.data||[],nm};applyEntries();
+ }catch(x){}
+}
 async function enter(){
  try{
   const {data:me}=await sb.auth.getUser();const email=(me&&me.user&&me.user.email)||'';
@@ -1926,12 +2040,13 @@ async function enter(){
     document.getElementById('g-cl').onclick=async()=>{const {error}=await sb.rpc('claim_admin',{p_name:'James P. Villalon'});error?login(error.message):enter()};return}
    card(`<p>Signed in as ${esc(email)}, but this account has no access to the CMG OS yet. Ask James to grant a role.</p><button id="g-so" style="${bt2}">Sign out</button>`);
    document.getElementById('g-so').onclick=()=>sb.auth.signOut().then(()=>login());return}
-  if(!['admin','hr','chro'].includes(role)){card(`<p>Your role (${esc(role)}) does not open the full OS yet. Employee and supervisor screens come with the next release.</p><button id="g-so" style="${bt2}">Sign out</button>`);document.getElementById('g-so').onclick=()=>sb.auth.signOut().then(()=>login());return}
+  if(!['admin','hr','chro'].includes(role)){return deskStart(email);card(`<p>Your role (${esc(role)}) does not open the full OS yet. Employee and supervisor screens come with the next release.</p><button id="g-so" style="${bt2}">Sign out</button>`);document.getElementById('g-so').onclick=()=>sb.auth.signOut().then(()=>login());return}
   const {data:r,error}=await sb.from('app_state').select('data,version').eq('id',SID).maybeSingle();
   if(error)throw error;
   if(r){db=r.data;ver=r.version;applyRefs();try{localStorage.setItem(LSL,JSON.stringify(db))}catch(e){}}
   else{if(!db.live)seedLive();ver=0}
   await syncOwners();
+  await syncEntries();
   on=true;gate().remove();
   if(!r){await doPush()}else ok();
   render();
