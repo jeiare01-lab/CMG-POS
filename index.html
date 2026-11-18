@@ -737,11 +737,30 @@ function bubbleSvg(items,COL){
    (skip.length?`<p class="small" style="color:#B9C3DE;margin:10px 0 0;text-align:center">${skip.map(t=>esc(t[1])+': <b style="color:#FEF9F3">'+esc(t[0])+'</b>').join(' · ')}</p>`:'')+
    `<p class="small" style="color:#7C87AA;margin:8px 0 0;text-align:center">Bubble size follows the figure. Counts, percentages and scores share one scale, so read each bubble by its label.</p>`;
 }
+function laneLinks(){
+  const ty=['Overtime','Unpaid leave','Company loan'],R=db.req.filter(q=>ty.includes(q.type)),A=(ty_,v)=>db.adj.filter(a=>a.type===ty_&&!!a.applied===v).length;
+  const L=liveLinks(),d=n=>L.find(l=>l[0]===n)[2],c=n=>L.find(l=>l[0]===n)[1];
+  const ap=S().ap,hired=db.apps.filter(a=>a.stage==='Hired').length;
+  return [
+   ['Self-Service → Payroll',R.filter(q=>q.status==='Pending').length,0,R.filter(q=>q.status==='Approved').length,d('Self-Service → Payroll')],
+   ['Labor Relations → Payroll',db.cases.filter(x=>x.stage!=='Decided').length,A('ded',false),A('ded',true),d('Labor Relations → Payroll')],
+   ['Performance → Total Rewards',db.props.filter(p=>p.status==='Pending').length,0,db.props.filter(p=>p.status==='Approved').length,d('Performance → Total Rewards')],
+   ['Total Rewards → Payroll',0,A('salary',false),A('salary',true),d('Total Rewards → Payroll')],
+   ['Learning → Career Lattice',0,c('Learning → Career Lattice'),0,d('Learning → Career Lattice')],
+   ['Procurement → Budget',0,c('Procurement → Budget'),0,d('Procurement → Budget')],
+   ['Warehouse → Procurement',c('Warehouse → Procurement'),0,S().prs.filter(p=>p.status==='PO issued').length,d('Warehouse → Procurement')],
+   ['Receiving → Payables',c('Receiving → Payables'),0,ap.filter(a=>a.inv!=null).length,d('Receiving → Payables')],
+   ['Hiring → Budget',c('Hiring → Budget'),0,0,d('Hiring → Budget')],
+   ['Hiring → Employee master',c('Hiring → Employee master'),0,hired,d('Hiring → Employee master')]];
+}
 function kanbanLinks(L,COL){
-  const cols={};L.forEach(l=>{const [a,b]=l[0].split(' → ');(cols[b]=cols[b]||{n:b,t:0,c:[]});cols[b].c.push({from:a,v:l[1],txt:l[2]});cols[b].t+=l[1]});
-  const C=Object.values(cols).sort((x,y)=>y.t-x.t);
-  const vmax=Math.max(1,...L.map(l=>l[1]));
-  return `<div class="kb">${C.map((k,i)=>`<div class="kbc" style="--c:${COL[i%6]}"><div class="kbh"><b>${esc(k.n)}</b><span>${k.t} pending</span></div>${k.c.sort((a,b)=>b.v-a.v).map(x=>{const s=Math.sqrt(x.v/vmax),h=x.v?84+s*130:64;return `<div class="kbx${x.v?'':' z'}" style="min-height:${h.toFixed(0)}px"><div class="kbf">from ${esc(x.from)}</div><div class="kbn" style="font-size:${(1.2+s*1.9).toFixed(2)}rem">${x.v}</div><div class="kbt">${esc(x.txt)}</div></div>`}).join('')}</div>`).join('')}</div><p class="small" style="color:#7C87AA;margin:8px 0 0">Columns are the module receiving the work. Box height follows the pending count.</p>`;
+  const lanes=[['Waiting on a decision',1],['Approved, queued for release',2],['Landed',3]];
+  const vmax=Math.max(1,...L.flatMap(l=>[l[1],l[2],l[3]]));
+  const quiet=L.filter(l=>!l[1]&&!l[2]&&!l[3]);
+  return `<div class="kb">${lanes.map(([nm,ix],i)=>{const cs=L.filter(l=>l[ix]).sort((a,b)=>b[ix]-a[ix]);const tot=cs.reduce((s,l)=>s+l[ix],0);
+   return `<div class="kbc" style="--c:${COL[[0,1,2][i]]}"><div class="kbh"><b>${nm}</b><span>${tot}</span></div>${cs.length?cs.map(l=>{const s=Math.sqrt(l[ix]/vmax);return `<div class="kbx${ix===3?' z':''}" style="min-height:${(78+s*120).toFixed(0)}px" title="${esc(l[4])}"><div class="kbf">${esc(l[0])}</div><div class="kbn" style="font-size:${(1.2+s*1.9).toFixed(2)}rem">${l[ix]}</div><div class="kbt">${esc(l[4])}</div></div>`}).join(''):'<div class="kbt" style="padding:8px 2px">Nothing here.</div>'}</div>`}).join('')}</div>`+
+   (quiet.length?`<p class="small" style="color:#B9C3DE;margin:8px 0 0">Quiet links: ${quiet.map(l=>esc(l[0])).join(' · ')}</p>`:'')+
+   `<p class="small" style="color:#7C87AA;margin:8px 0 0">Box height follows the count in that lane. Waiting means someone has to act; queued applies at the next payroll release; landed is already done.</p>`;
 }
 function viewDash(){
   const act=db.emps.filter(e=>e.active!==false&&onPay(e));
@@ -770,7 +789,7 @@ function viewDash(){
   <div class="goalhd">The four goals every module serves · Q3 2027</div>
   <section class="ribbon">${big.map((t,i)=>`<div class="stat"><i style="background:${COL[i]}"></i><div class="gk">${t[0]}</div><div class="gn">${esc(GOALS[t[0]])}</div><div class="n">${esc(t[1])}</div><div class="l">${esc(t[2])}</div><div class="fd">${esc(t[3])}</div></div>`).join('')}</section>
   <section class="glass"><h3>Also on your radar</h3>${bubbleSvg(rest,COL)}</section>
-  <section class="glass"><h3>How the modules talk to each other</h3>${kanbanLinks(liveLinks(),COL)}</section>
+  <section class="glass"><h3>How the modules talk to each other</h3>${kanbanLinks(laneLinks(),COL)}</section>
   <p class="foot" style="text-align:left;padding:8px 4px">Switch persona (top right) to see access change. Payroll cannot open discipline; Labor Relations cannot see payroll runs. Every change is written to the audit log.</p>`;
 }
 
