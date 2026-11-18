@@ -813,7 +813,7 @@ function viewPay(){
     h+=`<div class="grid tiles"><div class="tile"><div class="n">${esc(peso(sum('gross')))}</div><div class="l">Gross</div></div><div class="tile"><div class="n">${esc(peso(sum('sss')+sum('ph')+sum('pi')))}</div><div class="l">Employee SSS, PhilHealth, Pag-IBIG</div></div><div class="tile"><div class="n">${esc(peso(sum('tax')))}</div><div class="l">Withholding tax</div></div><div class="tile"><div class="n">${esc(peso(sum('net')))}</div><div class="l">Net pay</div></div></div>`;
     h+=table([['Employee'],['Company'],['Gross','r'],['SSS','r'],['PhilHealth','r'],['Pag-IBIG','r'],['Tax','r'],['Other ded','r'],['Net','r'],['Review']],
      S.map(s=>`<tr><td><button class="btn sm" data-act="slip" data-id="${s.empId}">${esc(s.name)}</button></td><td>${esc(s.sbu)}</td><td class="r mono">${esc(peso(s.gross))}</td><td class="r mono">${esc(peso(s.sss))}</td><td class="r mono">${esc(peso(s.ph))}</td><td class="r mono">${esc(peso(s.pi))}</td><td class="r mono">${esc(peso(s.tax))}</td><td class="r mono">${esc(peso(s.loan+s.adjDed))}</td><td class="r mono"><b>${esc(peso(s.net))}</b></td><td class="wrap">${s.flags.length?s.flags.map(f=>pill(f,'warn')).join(' '):pill('Clean','good')}</td></tr>`));
-    h+=`<div class="row" style="margin-top:10px"><button class="btn" data-act="bank">Bank file</button><button class="btn" data-act="gl">GL journal</button><button class="btn" data-act="remit">Remittance summary</button></div>`;
+    h+=`<div class="row" style="margin-top:10px"><button class="btn" data-act="gl">GL journal</button><button class="btn" data-act="remit">Remittance summary</button></div>`;
   }
   h+=`</div><div class="note">Rates are coded as sample logic: SSS 5% employee share on MSC 5,000 to 35,000, PhilHealth 2.5% employee share on 10,000 to 100,000, Pag-IBIG 2% capped at 10,000, TRAIN annual tax table, OT 125%, night diff 10%, daily rate = monthly × 12 ÷ ${DAY_FACTOR}. Validate every table against current circulars and run in parallel with your live payroll for 2 to 3 cycles before go-live.</div>`;
   return h;
@@ -1537,11 +1537,10 @@ function glChecks(){
      auto('Every payroll employee has a monthly salary',pay.length>0&&noSal===0,noSal?noSal+' missing':'all set'),
      auto('Reporting line set (only the top of each company may be blank)',pay.length>0&&noMgr<=3,noMgr+' without a manager'),
      auto('System roles assigned',miss.length===0,miss.length?'missing: '+miss.map(r=>ROLEL[r]).join(', '):'all assigned')]},
-   {id:2,t:'Payroll and timekeeping',who:'Payroll Officer + Finance',bring:'Current circulars for SSS, PhilHealth, Pag-IBIG and BIR. Cut-off and pay-date calendar. Bank file layout. Where attendance data comes from.',tab:'pay',checks:[
+   {id:2,t:'Payroll and timekeeping',who:'Payroll Officer + Finance',bring:'Current circulars for SSS, PhilHealth, Pag-IBIG and BIR. Cut-off and pay-date calendar. Where attendance data comes from.',tab:'pay',checks:[
      tick('p2-stat','Statutory tables checked against the current circulars (the coded rates are sample logic)'),
      tick('p2-cal','Pay cycles, cut-offs and pay dates confirmed with Finance'),
-     tick('p2-att','Attendance source agreed and a named person owns the monthly input'),
-     tick('p2-bank','Bank file layout tested with the bank')]},
+     tick('p2-att','Attendance source agreed and a named person owns the monthly input')]},
    {id:3,t:'Budget',who:'Finance Head + Operations Head',bring:'Approved FY budget per company and line. Approved headcount per company. Jan to date actuals if you go live mid-year.',tab:'bud',checks:[
      auto('Annual budget entered for PSC, CSI and ABC',emptyB.length===0,emptyB.length?'empty: '+emptyB.join(', '):'all three'),
      auto('Approved headcount entered for each company',emptyH.length===0,emptyH.length?'empty: '+emptyH.join(', '):'all three'),
@@ -1858,7 +1857,6 @@ const A={
  nextcycle:()=>{db.cycleIdx=(db.cycleIdx+1)%CYCLES.length;db.cycle={status:'open'};db.slips=[];db.emps.forEach(e=>db.att[e.id]={absent:0,unpaid:0,late:0,ot:0,nd:0});log('Payroll','Opened cycle '+CYCLES[db.cycleIdx]);save();toast('Next cycle open')},
  slip:d=>{const s=db.slips.find(x=>x.empId===d.id);modal('Payslip preview',slipHtml(s)+(s.flags.length?`<p>${s.flags.map(f=>pill(f,'warn')).join(' ')}</p>`:''))},
  myslip:d=>{const h=db.history.find(x=>x.label===d.label),s=h.slips.find(x=>x.empId===me().emp);modal('Payslip',slipHtml(s,h.label))},
- bank:()=>{const t='ACCOUNT,NAME,AMOUNT\n'+db.slips.map((s,i)=>`00${1000+i}-CMG,${s.name},${s.net.toFixed(2)}`).join('\n');modal('Bank file (CSV)',`<pre id="cp">${esc(t)}</pre>${copyBtn('cp')}<p class="small muted">Account numbers here are placeholders. Production reads them from the encrypted employee bank table.</p>`)},
  gl:()=>{const S=db.slips,sum=k=>r2(S.reduce((s,x)=>s+x[k],0)),er=r2(sum('erSSS')+sum('erPH')+sum('erPI'));
   const t=`Dr Salaries and wages        ${sum('gross').toFixed(2)}\nDr Employer contributions    ${er.toFixed(2)}\n   Cr SSS payable            ${r2(sum('sss')+sum('erSSS')).toFixed(2)}\n   Cr PhilHealth payable     ${r2(sum('ph')+sum('erPH')).toFixed(2)}\n   Cr Pag-IBIG payable       ${r2(sum('pi')+sum('erPI')).toFixed(2)}\n   Cr Withholding tax payable ${sum('tax').toFixed(2)}\n   Cr Employee loans / other  ${r2(sum('loan')+sum('adjDed')).toFixed(2)}\n   Cr Cash in bank           ${sum('net').toFixed(2)}`;
   modal('GL journal',`<pre id="cp">${esc(t)}</pre>${copyBtn('cp')}`)},
